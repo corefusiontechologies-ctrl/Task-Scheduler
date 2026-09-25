@@ -213,6 +213,7 @@ const statements = [
   )`,
   `ALTER TABLE reminder_deliveries DROP CONSTRAINT IF EXISTS reminder_delivery_status_check`,
   `ALTER TABLE reminder_deliveries ADD CONSTRAINT reminder_delivery_status_check CHECK (status IN ('pending', 'sending', 'retry', 'sent', 'cancelled', 'dead'))`,
+  `ALTER TABLE roles ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE roles ADD COLUMN IF NOT EXISTS color VARCHAR(7) NOT NULL DEFAULT '#6B6760'`,
   `ALTER TABLE roles ADD COLUMN IF NOT EXISTS perm_add_tasks BOOLEAN NOT NULL DEFAULT FALSE`,
   `ALTER TABLE roles ADD COLUMN IF NOT EXISTS perm_edit_tasks BOOLEAN NOT NULL DEFAULT FALSE`,
@@ -226,7 +227,19 @@ const statements = [
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS theme VARCHAR(20) NOT NULL DEFAULT 'auto'`,
+  `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS position VARCHAR(150) NOT NULL DEFAULT ''`,
+  `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
   `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`,
+  `DO $$ BEGIN
+     IF EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'team_members' AND column_name = 'role'
+     ) THEN
+       EXECUTE format('UPDATE team_members SET position = COALESCE(NULLIF(position, %L), NULLIF(role, %L), %L) WHERE position = %L', '', '', '', '');
+     END IF;
+   END $$`,
+  `ALTER TABLE categories ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
   `ALTER TABLE categories ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`,
   `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS title VARCHAR(255)`,
   `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS task_title VARCHAR(255)`,
@@ -237,11 +250,20 @@ const statements = [
   `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS client_email VARCHAR(254) NOT NULL DEFAULT ''`,
   `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS project_name VARCHAR(255) NOT NULL DEFAULT ''`,
   `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS progress INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS amount_paid NUMERIC(14,2) NOT NULL DEFAULT 0`,
+  `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS client_visible BOOLEAN NOT NULL DEFAULT FALSE`,
+  `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS created_by VARCHAR(150)`,
   `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`,
+  `ALTER TABLE task_activity ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE SET NULL`,
+  `ALTER TABLE task_activity ADD COLUMN IF NOT EXISTS username VARCHAR(150) NOT NULL DEFAULT ''`,
+  `ALTER TABLE task_activity ADD COLUMN IF NOT EXISTS action VARCHAR(50) NOT NULL DEFAULT 'legacy'`,
+  `ALTER TABLE task_activity ADD COLUMN IF NOT EXISTS details TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE task_activity ADD COLUMN IF NOT EXISTS actor TEXT`,
   `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS issue_date DATE`,
   `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_date DATE`,
-  `UPDATE invoices SET issue_date = COALESCE(issue_date, invoice_date, due_date) WHERE issue_date IS NULL`,
+  `UPDATE invoices SET issue_date = COALESCE(issue_date, invoice_date, due_date, CURRENT_DATE) WHERE issue_date IS NULL`,
   `UPDATE invoices SET invoice_date = COALESCE(invoice_date, issue_date) WHERE invoice_date IS NULL`,
   `ALTER TABLE invoices ALTER COLUMN issue_date SET NOT NULL`,
   `ALTER TABLE invoices ALTER COLUMN invoice_date SET NOT NULL`,
@@ -251,6 +273,16 @@ const statements = [
   `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS client_address TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS project_name VARCHAR(255) NOT NULL DEFAULT ''`,
   `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payment_status VARCHAR(30) NOT NULL DEFAULT 'unpaid'`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS status VARCHAR(30)`,
+  `UPDATE invoices SET status = CASE WHEN payment_status = 'paid' THEN 'paid' WHEN payment_status IN ('partial', 'partially_paid', 'deposit_paid', 'part_paid') THEN 'partially_paid' ELSE 'unpaid' END WHERE status IS NULL OR status NOT IN ('unpaid', 'partially_paid', 'paid')`,
+  `ALTER TABLE invoices ALTER COLUMN status SET DEFAULT 'unpaid'`,
+  `ALTER TABLE invoices ALTER COLUMN status SET NOT NULL`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS terms TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS amount NUMERIC(14,2)`,
+  `UPDATE invoice_items SET amount = ROUND(COALESCE(quantity, 0) * COALESCE(unit_price, 0), 2) WHERE amount IS NULL`,
+  `ALTER TABLE invoice_items ALTER COLUMN amount SET DEFAULT 0`,
+  `ALTER TABLE invoice_items ALTER COLUMN amount SET NOT NULL`,
+  `ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS currency VARCHAR(3) NOT NULL DEFAULT 'USD'`,
   `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS subtotal NUMERIC(14,2) NOT NULL DEFAULT 0`,
   `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(14,2) NOT NULL DEFAULT 0`,
@@ -274,41 +306,62 @@ const statements = [
        EXECUTE 'UPDATE task_activity SET actor = username WHERE actor IS NULL';
      END IF;
    END $$`,
+  `DO $$ BEGIN
+     IF EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'task_activity' AND column_name = 'message'
+     ) THEN
+       EXECUTE format('UPDATE task_activity SET details = message WHERE details = %L', '');
+     END IF;
+   END $$`,
+  `UPDATE task_activity SET username = COALESCE(NULLIF(username, ''), NULLIF(actor, ''), 'legacy') WHERE username = ''`,
+  `UPDATE task_activity SET actor = COALESCE(NULLIF(actor, ''), NULLIF(username, ''), 'legacy') WHERE actor IS NULL`,
   `UPDATE client_portals SET name = COALESCE(NULLIF(name, ''), NULLIF(client_name, ''), 'Legacy portal ' || id::text)`,
   `UPDATE client_portals SET created_by = 'migration' WHERE created_by = ''`,
+  `UPDATE client_portals portal SET name = portal.name || ' ' || portal.id::text WHERE portal.id IN (
+     SELECT id FROM (
+       SELECT id, ROW_NUMBER() OVER (PARTITION BY lower(name) ORDER BY id) AS position
+       FROM client_portals WHERE archived_at IS NULL
+     ) ranked WHERE ranked.position > 1
+   )`,
   `ALTER TABLE client_portals ALTER COLUMN name SET NOT NULL`,
-  `UPDATE invoices SET payment_status = CASE status WHEN 'paid' THEN 'paid' WHEN 'partial' THEN 'partially_paid' ELSE 'unpaid' END WHERE payment_status = 'unpaid' AND status <> 'unpaid'`,
-  `UPDATE invoices SET status = payment_status WHERE status IN ('unpaid', 'partial', 'paid')`,
-  `UPDATE tasks SET status = 'done' WHERE status = 'completed'`,
+  `UPDATE invoices SET payment_status = CASE status WHEN 'paid' THEN 'paid' WHEN status IN ('partial', 'partially_paid') THEN 'partially_paid' ELSE 'unpaid' END`,
+  `UPDATE tasks SET status = 'done' WHERE status IN ('completed', 'complete', 'finished', 'closed')`,
+  `UPDATE tasks SET status = 'in_progress' WHERE status IN ('in progress', 'in-progress', 'started', 'active', 'pending')`,
+  `UPDATE tasks SET status = 'not_started' WHERE status IS NULL OR status NOT IN ('not_started', 'in_progress', 'review', 'done')`,
   `UPDATE tasks SET payment_status = CASE payment_status WHEN 'fully_paid' THEN 'paid' WHEN 'deposit_paid' THEN 'partially_paid' ELSE 'unpaid' END WHERE payment_status NOT IN ('unpaid', 'partially_paid', 'paid')`,
   `ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_status_check`,
   `ALTER TABLE tasks ADD CONSTRAINT tasks_status_check CHECK (status IN ('not_started', 'in_progress', 'review', 'done'))`,
   `ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_payment_status_check`,
   `ALTER TABLE tasks ADD CONSTRAINT tasks_payment_status_check CHECK (payment_status IN ('unpaid', 'partially_paid', 'paid'))`,
   `UPDATE invoices invoice SET subtotal = totals.subtotal, tax_amount = totals.tax_amount, total = totals.total FROM (
-    SELECT id, SUM(amount)::numeric AS subtotal, ROUND(SUM(amount) * tax_rate / 100, 2) AS tax_amount,
-      GREATEST(0, ROUND(SUM(amount) * (1 + tax_rate / 100) - discount, 2)) AS total
-    FROM invoice_items GROUP BY id, tax_rate, discount
-  ) totals WHERE invoice.id = totals.id`,
+     SELECT target.id,
+       COALESCE(SUM(items.amount), 0)::numeric AS subtotal,
+       ROUND(COALESCE(SUM(items.amount), 0) * target.tax_rate / 100, 2) AS tax_amount,
+       GREATEST(0, ROUND(COALESCE(SUM(items.amount), 0) * (1 + target.tax_rate / 100) - target.discount, 2)) AS total
+     FROM invoices target
+     LEFT JOIN invoice_items items ON items.invoice_id = target.id
+     GROUP BY target.id, target.tax_rate, target.discount
+   ) totals WHERE invoice.id = totals.id`,
   `DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tasks_date_order_check') THEN
-      ALTER TABLE tasks ADD CONSTRAINT tasks_date_order_check CHECK (start_date <= due_date);
+      ALTER TABLE tasks ADD CONSTRAINT tasks_date_order_check CHECK (start_date <= due_date) NOT VALID;
     END IF;
   END $$`,
   `DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'invoices_date_order_check') THEN
-      ALTER TABLE invoices ADD CONSTRAINT invoices_date_order_check CHECK (issue_date <= due_date);
+      ALTER TABLE invoices ADD CONSTRAINT invoices_date_order_check CHECK (issue_date <= due_date) NOT VALID;
     END IF;
   END $$`,
   `ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_amounts_check`,
-  `ALTER TABLE invoices ADD CONSTRAINT invoices_amounts_check CHECK (subtotal >= 0 AND tax_amount >= 0 AND total >= 0 AND tax_rate >= 0 AND tax_rate <= 100 AND discount >= 0 AND amount_paid >= 0 AND amount_paid <= total)`,
+  `ALTER TABLE invoices ADD CONSTRAINT invoices_amounts_check CHECK (subtotal >= 0 AND tax_amount >= 0 AND total >= 0 AND tax_rate >= 0 AND tax_rate <= 100 AND discount >= 0 AND amount_paid >= 0 AND amount_paid <= total) NOT VALID`,
   `ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_status_check`,
   `ALTER TABLE invoices ADD CONSTRAINT invoices_status_check CHECK (status IN ('unpaid', 'partially_paid', 'paid'))`,
   `ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_payment_status_check`,
   `ALTER TABLE invoices ADD CONSTRAINT invoices_payment_status_check CHECK (payment_status IN ('unpaid', 'partially_paid', 'paid'))`,
   `DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'invoice_items_values_check') THEN
-      ALTER TABLE invoice_items ADD CONSTRAINT invoice_items_values_check CHECK (quantity > 0 AND unit_price >= 0 AND amount >= 0);
+      ALTER TABLE invoice_items ADD CONSTRAINT invoice_items_values_check CHECK (quantity > 0 AND unit_price >= 0 AND amount >= 0) NOT VALID;
     END IF;
   END $$`,
   `DO $$ BEGIN
@@ -316,6 +369,7 @@ const statements = [
       ALTER TABLE invoice_payments ADD CONSTRAINT invoice_payments_amount_check CHECK (amount <> 0);
     END IF;
   END $$`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS roles_name_unique ON roles (name)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_unique ON users (lower(username))`,
   `CREATE UNIQUE INDEX IF NOT EXISTS invoices_invoice_number_unique ON invoices (invoice_number)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS tasks_share_token_unique ON tasks (share_token) WHERE share_token IS NOT NULL`,
@@ -325,7 +379,7 @@ const statements = [
   `CREATE INDEX IF NOT EXISTS tasks_dates_index ON tasks (start_date, due_date) WHERE archived_at IS NULL`,
   `CREATE INDEX IF NOT EXISTS invoices_listing_index ON invoices (archived_at, status, due_date)`,
   `CREATE INDEX IF NOT EXISTS task_activity_task_index ON task_activity (task_id, created_at DESC)`,
-  `CREATE INDEX IF NOT EXISTS invoice_activity_invoice_index ON task_activity ((details->>'invoice_id'), created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS task_activity_created_index ON task_activity (created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS login_attempts_ip_index ON login_attempts (ip, success, created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS task_reminder_due_index ON task_reminder_deliveries (status, scheduled_for)`,
   `CREATE INDEX IF NOT EXISTS reminder_delivery_dispatch_index ON reminder_deliveries (status, next_attempt, scheduled_for)`,
@@ -412,7 +466,8 @@ const statements = [
 
 const existingTables = await sql`
   SELECT to_regclass('public.invoices')::text AS invoices,
-         to_regclass('public.users')::text AS users
+         to_regclass('public.users')::text AS users,
+         to_regclass('public.roles')::text AS roles
 `;
 const duplicateInvoices = existingTables[0]?.invoices ? await sql`
   SELECT invoice_number, COUNT(*)::int AS count
@@ -428,6 +483,16 @@ const duplicateUsernames = existingTables[0]?.users ? await sql`
   HAVING COUNT(*) > 1
   LIMIT 10
 ` : [];
+const duplicateRoleNames = existingTables[0]?.roles ? await sql`
+  SELECT lower(name) AS name, COUNT(*)::int AS count
+  FROM roles
+  GROUP BY lower(name)
+  HAVING COUNT(*) > 1
+  LIMIT 10
+` : [];
+if (duplicateRoleNames.length) {
+  throw new Error(`Duplicate role names must be resolved before migration: ${duplicateRoleNames.map(row => row.name).join(', ')}`);
+}
 if (duplicateInvoices.length) {
   throw new Error(`Duplicate invoice numbers must be resolved before migration: ${duplicateInvoices.map(row => row.invoice_number).join(', ')}`);
 }
