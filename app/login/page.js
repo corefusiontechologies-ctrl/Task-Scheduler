@@ -17,14 +17,28 @@ export default function LoginPage() {
   async function handleLogin() {
     if (!username.trim() || !password) { setError('Enter your username and password.'); return; }
     setLoading(true); setError('');
-    const res = await fetch('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: username.trim(), password }),
-    });
-    const data = await res.json();
+    let res;
+    let data = {};
+    try {
+      res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim(), password }),
+      });
+      const text = await res.text();
+      if (text) {
+        try { data = JSON.parse(text); } catch { data = {}; }
+      }
+    } catch {
+      setLoading(false);
+      setError('Could not reach the server. Please try again.');
+      return;
+    }
     setLoading(false);
-    if (!res.ok) { setError(data.error || 'Invalid credentials'); return; }
+    if (!res.ok) {
+      setError(data.error || (res.status >= 500 ? 'Login service is temporarily unavailable.' : 'Invalid credentials'));
+      return;
+    }
     router.push(data.user?.role === 'superadmin' ? '/admin' : '/dashboard');
     router.refresh();
   }

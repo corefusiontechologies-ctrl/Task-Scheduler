@@ -238,6 +238,8 @@ const statements = [
       OR perm_manage_availability IS NULL OR perm_manage_invoices IS NULL`,
   `ALTER TABLE roles ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT FALSE`,
   `ALTER TABLE roles ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`,
+  `UPDATE roles SET color = '#6B6760' WHERE color IS NULL OR color = ''`,
+  `ALTER TABLE roles ALTER COLUMN color SET DEFAULT '#6B6760'`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0`,
@@ -326,7 +328,7 @@ const statements = [
        SELECT 1 FROM information_schema.columns
        WHERE table_schema = 'public' AND table_name = 'task_activity' AND column_name = 'message'
      ) THEN
-       EXECUTE format('UPDATE task_activity SET details = message WHERE details = %L', '');
+        EXECUTE format('UPDATE task_activity SET details = jsonb_build_object(''message'', message)::text WHERE details = %L', '');
      END IF;
    END $$`,
   `UPDATE task_activity SET username = COALESCE(NULLIF(username, ''), NULLIF(actor, ''), 'legacy') WHERE username = ''`,
@@ -340,7 +342,7 @@ const statements = [
      ) ranked WHERE ranked.position > 1
    )`,
   `ALTER TABLE client_portals ALTER COLUMN name SET NOT NULL`,
-  `UPDATE invoices SET payment_status = CASE status WHEN 'paid' THEN 'paid' WHEN status IN ('partial', 'partially_paid') THEN 'partially_paid' ELSE 'unpaid' END`,
+  `UPDATE invoices SET payment_status = CASE WHEN status = 'paid' THEN 'paid' WHEN status IN ('partial', 'partially_paid') THEN 'partially_paid' ELSE 'unpaid' END`,
   `UPDATE tasks SET status = 'done' WHERE status IN ('completed', 'complete', 'finished', 'closed')`,
   `UPDATE tasks SET status = 'in_progress' WHERE status IN ('in progress', 'in-progress', 'started', 'active', 'pending')`,
   `UPDATE tasks SET status = 'not_started' WHERE status IS NULL OR status NOT IN ('not_started', 'in_progress', 'review', 'done')`,

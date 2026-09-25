@@ -50,7 +50,7 @@ export const GET = withApi(async () => {
           SELECT ta.id::text, ta.action, ta.details, ta.actor, ta.username, ta.created_at,
             i.id::text AS ref_id, i.invoice_number AS title, i.client_name
           FROM task_activity ta
-          JOIN invoices i ON i.id::text = ta.details->>'invoice_id'
+          JOIN invoices i ON i.id::text = NULLIF(ta.details, '')::jsonb->>'invoice_id'
           WHERE i.archived_at IS NULL
           ORDER BY ta.created_at DESC, ta.id DESC
           LIMIT 40
@@ -59,7 +59,7 @@ export const GET = withApi(async () => {
           SELECT ta.id::text, ta.action, ta.details, ta.actor, ta.username, ta.created_at,
             i.id::text AS ref_id, i.invoice_number AS title, i.client_name
           FROM task_activity ta
-          JOIN invoices i ON i.id::text = ta.details->>'invoice_id'
+          JOIN invoices i ON i.id::text = NULLIF(ta.details, '')::jsonb->>'invoice_id'
           WHERE i.archived_at IS NULL AND i.created_by_id = ${session.id}
           ORDER BY ta.created_at DESC, ta.id DESC
           LIMIT 40

@@ -6,13 +6,14 @@ import { sessionCookie, signSession } from '@/lib/session';
 
 export async function POST(request) {
   let headers = {};
-  const limit = await getRateLimitState(request, 8, 15 * 60 * 1000);
-  headers = serializeRateLimitHeaders(limit);
-  if (limit.blocked) {
-    return NextResponse.json({ error: 'Too many login attempts. Please try again later.' }, { status: 429, headers });
-  }
 
   try {
+    const limit = await getRateLimitState(request, 8, 15 * 60 * 1000);
+    headers = serializeRateLimitHeaders(limit);
+    if (limit.blocked) {
+      return NextResponse.json({ error: 'Too many login attempts. Please try again later.' }, { status: 429, headers });
+    }
+
     const body = await request.json().catch(() => null);
     if (!body || typeof body.username !== 'string' || typeof body.password !== 'string') {
       await recordRateLimitAttempt(request, '', false);
