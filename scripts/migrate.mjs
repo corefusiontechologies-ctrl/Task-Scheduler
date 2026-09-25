@@ -266,7 +266,14 @@ const statements = [
   `UPDATE users SET active = TRUE WHERE active IS NULL`,
   `UPDATE tasks SET updated_at = COALESCE(updated_at, NOW())`,
   `UPDATE invoices SET updated_at = COALESCE(updated_at, NOW())`,
-  `UPDATE task_activity SET actor = username WHERE actor IS NULL`,
+  `DO $$ BEGIN
+     IF EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'task_activity' AND column_name = 'username'
+     ) THEN
+       EXECUTE 'UPDATE task_activity SET actor = username WHERE actor IS NULL';
+     END IF;
+   END $$`,
   `UPDATE client_portals SET name = COALESCE(NULLIF(name, ''), NULLIF(client_name, ''), 'Legacy portal ' || id::text)`,
   `UPDATE client_portals SET created_by = 'migration' WHERE created_by = ''`,
   `ALTER TABLE client_portals ALTER COLUMN name SET NOT NULL`,
