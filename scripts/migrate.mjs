@@ -222,6 +222,17 @@ const statements = [
   `ALTER TABLE roles ADD COLUMN IF NOT EXISTS perm_view_client_links BOOLEAN NOT NULL DEFAULT FALSE`,
   `ALTER TABLE roles ADD COLUMN IF NOT EXISTS perm_manage_availability BOOLEAN NOT NULL DEFAULT FALSE`,
   `ALTER TABLE roles ADD COLUMN IF NOT EXISTS perm_manage_invoices BOOLEAN NOT NULL DEFAULT FALSE`,
+  `UPDATE roles SET
+     perm_add_tasks = COALESCE(perm_add_tasks, FALSE),
+     perm_edit_tasks = COALESCE(perm_edit_tasks, FALSE),
+     perm_delete_tasks = COALESCE(perm_delete_tasks, FALSE),
+     perm_view_all_tasks = COALESCE(perm_view_all_tasks, FALSE),
+     perm_view_client_links = COALESCE(perm_view_client_links, FALSE),
+     perm_manage_availability = COALESCE(perm_manage_availability, FALSE),
+     perm_manage_invoices = COALESCE(perm_manage_invoices, FALSE)
+   WHERE perm_add_tasks IS NULL OR perm_edit_tasks IS NULL OR perm_delete_tasks IS NULL
+      OR perm_view_all_tasks IS NULL OR perm_view_client_links IS NULL
+      OR perm_manage_availability IS NULL OR perm_manage_invoices IS NULL`,
   `ALTER TABLE roles ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT FALSE`,
   `ALTER TABLE roles ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE`,
@@ -295,7 +306,6 @@ const statements = [
   `ALTER TABLE client_portals ADD COLUMN IF NOT EXISTS client_email VARCHAR(254) NOT NULL DEFAULT ''`,
   `ALTER TABLE client_portals ADD COLUMN IF NOT EXISTS created_by VARCHAR(150) NOT NULL DEFAULT ''`,
   `ALTER TABLE client_portals ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`,
-  `UPDATE users SET active = TRUE WHERE active IS NULL`,
   `UPDATE tasks SET updated_at = COALESCE(updated_at, NOW())`,
   `UPDATE invoices SET updated_at = COALESCE(updated_at, NOW())`,
   `DO $$ BEGIN
@@ -337,43 +347,35 @@ const statements = [
   `UPDATE invoices invoice SET subtotal = totals.subtotal, tax_amount = totals.tax_amount, total = totals.total FROM (
      SELECT target.id,
        COALESCE(SUM(items.amount), 0)::numeric AS subtotal,
-       ROUND(COALESCE(SUM(items.amount), 0) * target.tax_rate / 100, 2) AS tax_amount,
-       GREATEST(0, ROUND(COALESCE(SUM(items.amount), 0) * (1 + target.tax_rate / 100) - target.discount, 2)) AS total
+       ROUND(COALESCE(SUM(items.amount), 0) * COALESCE(target.tax_rate, 0) / 100, 2) AS tax_amount,
+       GREATEST(0, ROUND(COALESCE(SUM(items.amount), 0) * (1 + COALESCE(target.tax_rate, 0) / 100) - COALESCE(target.discount, 0), 2)) AS total
      FROM invoices target
      LEFT JOIN invoice_items items ON items.invoice_id = target.id
      GROUP BY target.id, target.tax_rate, target.discount
    ) totals WHERE invoice.id = totals.id`,
-  `DO $$ BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tasks_date_order_check') THEN
-      ALTER TABLE tasks ADD CONSTRAINT tasks_date_order_check CHECK (start_date <= due_date) NOT VALID;
-    END IF;
-  END $$`,
-  `DO $$ BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'invoices_date_order_check') THEN
-      ALTER TABLE invoices ADD CONSTRAINT invoices_date_order_check CHECK (issue_date <= due_date) NOT VALID;
-    END IF;
-  END $$`,
+  `ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_date_order_check`,
+  `ALTER TABLE tasks ADD CONSTRAINT tasks_date_order_check CHECK (start_date <= due_date) NOT VALID`,
+  `ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_date_order_check`,
+  `ALTER TABLE invoices ADD CONSTRAINT invoices_date_order_check CHECK (issue_date <= due_date) NOT VALID`,
   `ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_amounts_check`,
   `ALTER TABLE invoices ADD CONSTRAINT invoices_amounts_check CHECK (subtotal >= 0 AND tax_amount >= 0 AND total >= 0 AND tax_rate >= 0 AND tax_rate <= 100 AND discount >= 0 AND amount_paid >= 0 AND amount_paid <= total) NOT VALID`,
   `ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_status_check`,
   `ALTER TABLE invoices ADD CONSTRAINT invoices_status_check CHECK (status IN ('unpaid', 'partially_paid', 'paid'))`,
   `ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_payment_status_check`,
   `ALTER TABLE invoices ADD CONSTRAINT invoices_payment_status_check CHECK (payment_status IN ('unpaid', 'partially_paid', 'paid'))`,
-  `DO $$ BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'invoice_items_values_check') THEN
-      ALTER TABLE invoice_items ADD CONSTRAINT invoice_items_values_check CHECK (quantity > 0 AND unit_price >= 0 AND amount >= 0) NOT VALID;
-    END IF;
-  END $$`,
-  `DO $$ BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'invoice_payments_amount_check') THEN
-      ALTER TABLE invoice_payments ADD CONSTRAINT invoice_payments_amount_check CHECK (amount <> 0);
-    END IF;
-  END $$`,
+  `ALTER TABLE invoice_items DROP CONSTRAINT IF EXISTS invoice_items_values_check`,
+  `ALTER TABLE invoice_items ADD CONSTRAINT invoice_items_values_check CHECK (quantity > 0 AND unit_price >= 0 AND amount >= 0) NOT VALID`,
+  `ALTER TABLE invoice_payments DROP CONSTRAINT IF EXISTS invoice_payments_amount_check`,
+  `ALTER TABLE invoice_payments ADD CONSTRAINT invoice_payments_amount_check CHECK (amount <> 0)`,
+  `UPDATE tasks SET share_token = share_token || '-' || id::text WHERE id NOT IN (SELECT MIN(id) FROM tasks GROUP BY share_token)`,
+  `UPDATE invoices SET share_token = share_token || '-' || id::text WHERE id NOT IN (SELECT MIN(id) FROM invoices GROUP BY share_token)`,
+  `UPDATE client_portals SET token = token || '-' || id::text WHERE id NOT IN (SELECT MIN(id) FROM client_portals GROUP BY token)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS roles_name_unique ON roles (name)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_unique ON users (lower(username))`,
   `CREATE UNIQUE INDEX IF NOT EXISTS invoices_invoice_number_unique ON invoices (invoice_number)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS tasks_share_token_unique ON tasks (share_token) WHERE share_token IS NOT NULL`,
   `CREATE UNIQUE INDEX IF NOT EXISTS invoices_share_token_unique ON invoices (share_token) WHERE share_token IS NOT NULL`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS client_portals_token_unique ON client_portals (token)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS client_portals_name_active_unique ON client_portals (lower(name)) WHERE archived_at IS NULL`,
   `CREATE INDEX IF NOT EXISTS tasks_listing_index ON tasks (archived_at, status, due_date)`,
   `CREATE INDEX IF NOT EXISTS tasks_dates_index ON tasks (start_date, due_date) WHERE archived_at IS NULL`,
@@ -504,7 +506,7 @@ await sql.transaction(statements.map(statement => sql(statement)), { isolationLe
 
 if (!alreadyMigrated) {
   const tokenSets = [
-    ['tasks', 'share_token', 'archived_at IS NULL AND client_visible = TRUE'],
+    ['tasks', 'share_token', 'archived_at IS NULL'],
     ['invoices', 'share_token', 'archived_at IS NULL'],
     ['client_portals', 'token', 'archived_at IS NULL'],
   ];
