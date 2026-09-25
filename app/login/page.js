@@ -25,8 +25,7 @@ export default function LoginPage() {
     const data = await res.json();
     setLoading(false);
     if (!res.ok) { setError(data.error || 'Invalid credentials'); return; }
-    // Redirect superadmin to admin page, others to dashboard
-    router.push(data.isSuperAdmin ? '/admin' : '/dashboard');
+    router.push(data.user?.role === 'superadmin' ? '/admin' : '/dashboard');
     router.refresh();
   }
 
