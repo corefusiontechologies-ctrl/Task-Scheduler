@@ -4,6 +4,9 @@ import { neon } from '@neondatabase/serverless';
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
 
+const target = new URL(connectionString);
+console.log(`Migration target: ${target.hostname} / ${target.pathname.replace(/^\//, '') || '(default db)'}`);
+
 const sql = neon(connectionString);
 const migrationName = '2026_09_25_security_and_integrity';
 const migrationTable = await sql`SELECT to_regclass('public.app_migrations')::text AS table_name`;
@@ -239,6 +242,8 @@ const statements = [
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS theme VARCHAR(20) NOT NULL DEFAULT 'auto'`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS name VARCHAR(150)`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS role_id INTEGER REFERENCES roles(id) ON DELETE SET NULL`,
   `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS position VARCHAR(150) NOT NULL DEFAULT ''`,
   `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
   `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`,
