@@ -39,7 +39,9 @@ function TaskRow({ task }) {
       </div>
       <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
         {fmt(task.start_date)} to {fmt(task.due_date)}
-        {task.assigned_name ? ` · Handled by ${task.assigned_name}` : ''}
+        {(task.assignee_names || []).filter(Boolean).length > 0
+          ? ` · Handled by ${(task.assignee_names || []).filter(Boolean).join(', ')}`
+          : ''}
       </p>
       {task.notes && <p style={{ fontSize: 13, margin: '6px 0 0', whiteSpace: 'pre-wrap' }}>{task.notes}</p>}
     </article>
@@ -67,10 +69,13 @@ export default async function ClientPortalPage({ params }) {
 
   const tasks = await sql`
     SELECT task.id::text, task.title, task.status, task.start_date, task.due_date, task.notes,
-      member.name AS assigned_name
+      (
+        SELECT array_agg(tm.name ORDER BY ta.is_primary DESC, tm.name)
+        FROM task_assignees ta
+        JOIN team_members tm ON tm.id = ta.member_id AND tm.archived_at IS NULL
+        WHERE ta.task_id = task.id
+      ) AS assignee_names
     FROM tasks task
-    LEFT JOIN team_members member
-      ON member.id = task.assigned_to AND member.archived_at IS NULL
     WHERE task.client_name = ${portal.name} AND task.archived_at IS NULL
     ORDER BY (task.status = 'done') ASC, task.due_date ASC NULLS LAST, task.id ASC
   `;

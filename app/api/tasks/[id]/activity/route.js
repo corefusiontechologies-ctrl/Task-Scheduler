@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getFreshSession } from '@/lib/auth';
-import { can, canViewAllTasks, getUserMemberId } from '@/lib/access';
+import { can, canViewAllTasks } from '@/lib/access';
 import { getSql } from '@/lib/db';
 import { ApiError, withApi } from '@/lib/http';
 
@@ -15,10 +15,14 @@ export const GET = withApi(async (request, { params }) => {
   const task = taskRows[0];
   if (!task) throw new ApiError(404, 'Task not found');
   if (!canViewAllTasks(session)) {
-    const memberId = await getUserMemberId(session);
     const [access] = await sql`
       SELECT 1 AS allowed
-      WHERE ${memberId || 0}::integer = ${task.assigned_to || 0}::integer
+      WHERE EXISTS (
+        SELECT 1 FROM task_assignees ta
+        WHERE ta.task_id = ${task.id}
+          AND ta.member_id IN (SELECT id FROM team_members WHERE user_id = ${session.id} AND archived_at IS NULL)
+      )
+        OR ${task.assigned_to || 0}::integer IN (SELECT id FROM team_members WHERE user_id = ${session.id} AND archived_at IS NULL)
         OR ${task.category_id || 0}::integer IN (
           SELECT rc.category_id
           FROM role_categories rc

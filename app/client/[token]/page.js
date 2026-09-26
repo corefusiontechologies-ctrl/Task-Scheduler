@@ -30,10 +30,14 @@ export default async function ClientPage({ params }) {
   const sql = getSql();
   const rows = await sql`
     SELECT task.title, task.description, task.notes, task.status,
-      task.start_date, task.due_date, task.client_name, member.name AS assigned_name
+      task.start_date, task.due_date, task.client_name,
+      (
+        SELECT array_agg(tm.name ORDER BY ta.is_primary DESC, tm.name)
+        FROM task_assignees ta
+        JOIN team_members tm ON tm.id = ta.member_id AND tm.archived_at IS NULL
+        WHERE ta.task_id = task.id
+      ) AS assignee_names
     FROM tasks task
-    LEFT JOIN team_members member
-      ON member.id = task.assigned_to AND member.archived_at IS NULL
     WHERE task.share_token = ${String(token || '')}
       AND task.client_visible = TRUE
       AND task.archived_at IS NULL
@@ -50,6 +54,7 @@ export default async function ClientPage({ params }) {
   }
 
   const progress = STATUS_PROGRESS[task.status] || 5;
+  const assigneeNames = (task.assignee_names || []).filter(Boolean);
   const currentIndex = STAGES.indexOf(task.status);
   const message = encodeURIComponent(`Hi, I'm checking on my project: ${task.title}`);
 
@@ -67,7 +72,7 @@ export default async function ClientPage({ params }) {
             <span className="dot" style={{ background: `var(--${task.status})` }} aria-hidden="true" />
             {STATUS_LABELS[task.status]}
           </span>
-          {task.assigned_name && <span className="muted" style={{ fontSize: 13 }}>Handled by {task.assigned_name}</span>}
+          {assigneeNames.length > 0 && <span className="muted" style={{ fontSize: 13 }}>Handled by {assigneeNames.join(', ')}</span>}
         </div>
 
         <div className="progress-track" role="progressbar" aria-label="Project progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress}>

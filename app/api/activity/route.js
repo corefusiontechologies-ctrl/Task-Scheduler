@@ -30,7 +30,12 @@ export const GET = withApi(async () => {
           JOIN tasks t ON t.id = ta.task_id
           WHERE t.archived_at IS NULL
             AND (
-              t.assigned_to IN (
+              EXISTS (
+                SELECT 1 FROM task_assignees ta
+                JOIN team_members member ON member.id = ta.member_id
+                WHERE ta.task_id = t.id AND member.user_id = ${session.id} AND member.archived_at IS NULL
+              )
+              OR t.assigned_to IN (
                 SELECT id FROM team_members WHERE user_id = ${session.id} AND archived_at IS NULL
               )
               OR t.category_id IN (

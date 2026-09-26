@@ -281,6 +281,17 @@ const statements = [
   `ALTER TABLE task_activity ADD COLUMN IF NOT EXISTS details TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE task_activity ADD COLUMN IF NOT EXISTS actor TEXT`,
   `ALTER TABLE task_activity ALTER COLUMN task_id DROP NOT NULL`,
+  `CREATE TABLE IF NOT EXISTS task_assignees (
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    member_id INTEGER NOT NULL REFERENCES team_members(id) ON DELETE CASCADE,
+    is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (task_id, member_id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS task_assignees_member_index ON task_assignees (member_id, task_id)`,
+  `INSERT INTO task_assignees (task_id, member_id, is_primary)
+    SELECT id, assigned_to, TRUE FROM tasks WHERE assigned_to IS NOT NULL
+    ON CONFLICT (task_id, member_id) DO NOTHING`,
   `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS issue_date DATE`,
   `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_date DATE`,
   `UPDATE invoices SET issue_date = COALESCE(issue_date, invoice_date, due_date, CURRENT_DATE) WHERE issue_date IS NULL`,

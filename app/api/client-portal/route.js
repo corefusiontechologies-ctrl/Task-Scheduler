@@ -23,7 +23,12 @@ async function hasVisibleTask(session, clientName) {
     WHERE task.client_name = ${clientName}
       AND task.archived_at IS NULL
       AND (
-        task.assigned_to IN (
+        EXISTS (
+          SELECT 1 FROM task_assignees ta
+          JOIN team_members member ON member.id = ta.member_id
+          WHERE ta.task_id = task.id AND member.user_id = ${session.id} AND member.archived_at IS NULL
+        )
+        OR task.assigned_to IN (
           SELECT id FROM team_members WHERE user_id = ${session.id} AND archived_at IS NULL
         )
         OR task.category_id IN (

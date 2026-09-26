@@ -1,10 +1,24 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { getFreshSession } from '@/lib/auth';
 import { can, canEditAllTasks, canViewAllTasks, getUserMemberId } from '@/lib/access';
 import { db, genToken, getSql } from '@/lib/db';
 import { ApiError, requestJson, withApi } from '@/lib/http';
 import { describeTaskChanges, normalizeTaskInput, TASK_PAYMENT_STATUSES, TASK_STATUSES, taskCapacity, validateTaskReferences } from '@/lib/tasks';
 import { oneOf, optionalNumber, requiredTimestamp } from '@/lib/validation';
+
+function assigneeAggregates(taskAlias, memberAlias) {
+  return `
+  COALESCE(
+    (SELECT array_agg(ta.member_id::text ORDER BY ta.is_primary DESC, ta.member_id)
+     FROM task_assignees ta WHERE ta.task_id = ${taskAlias}.id),
+    CASE WHEN ${taskAlias}.assigned_to IS NULL THEN ARRAY[]::text[] ELSE ARRAY[${taskAlias}.assigned_to::text] END
+  ) AS assignee_ids,
+  COALESCE(
+    (SELECT array_agg(tm2.name ORDER BY ta.is_primary DESC, tm2.name)
+     FROM task_assignees ta JOIN team_members tm2 ON tm2.id = ta.member_id WHERE ta.task_id = ${taskAlias}.id),
+    CASE WHEN ${taskAlias}.assigned_to IS NULL THEN ARRAY[]::text[] ELSE ARRAY[${memberAlias}.name] END
+  ) AS assignee_names`;
+}
 
 const TASK_SELECT = `
   t.id::text, t.title, t.title AS task_title, t.description,
@@ -14,8 +28,22 @@ const TASK_SELECT = `
   t.payment_status, t.amount_paid::float8 AS amount_paid, t.client_visible,
   t.share_token, t.created_by, t.created_at, t.updated_at, t.archived_at,
   c.name AS category_name, c.color AS category_color,
-  tm.name AS assigned_name, tm.position AS assigned_role
+  tm.name AS assigned_name, tm.position AS assigned_role,
+  ${assigneeAggregates('t', 'tm')}
 `;
+
+function serializeTask(task) {
+  const assigneeIds = (task.assignee_ids || []).map(String);
+  return {
+    ...task,
+    id: String(task.id),
+    task_title: task.task_title || task.title,
+    category_id: task.category_id === null || task.category_id === undefined ? null : String(task.category_id),
+    assigned_to: task.assigned_to === null || task.assigned_to === undefined ? null : String(task.assigned_to),
+    assignee_ids: assigneeIds.length ? assigneeIds : task.assigned_to ? [String(task.assigned_to)] : [],
+    assignee_names: task.assignee_names || (task.assigned_name ? [task.assigned_name] : []),
+  };
+}
 
 async function findTask(id, includeArchived = false) {
   const sql = getSql();
@@ -26,14 +54,15 @@ async function findTask(id, includeArchived = false) {
     LEFT JOIN team_members tm ON tm.id = t.assigned_to
     WHERE t.id = $1 AND ($2::boolean OR t.archived_at IS NULL)
   `, [id, includeArchived]);
-  return rows[0] || null;
+  return rows[0] ? serializeTask(rows[0]) : null;
 }
 
 async function canEditTask(session, task) {
   if (canEditAllTasks(session)) return true;
   if (!can(session, 'edit_own_tasks')) return false;
   const memberId = await getUserMemberId(session);
-  return !!memberId && Number(task.assigned_to) === Number(memberId);
+  if (!memberId) return false;
+  return (task.assignee_ids || []).map(Number).includes(Number(memberId));
 }
 
 export const GET = withApi(async (request, { params }) => {
@@ -48,7 +77,7 @@ export const GET = withApi(async (request, { params }) => {
     const [access] = await getSql()`
       SELECT 1 AS allowed
       WHERE (
-        ${memberId || 0}::integer = ${task.assigned_to || 0}::integer
+        ${memberId || 0}::integer IN (SELECT unnest(COALESCE(${task.assignee_ids || []}::text[], ARRAY[]::text[]))::integer)
         OR ${task.category_id || 0}::integer IN (
           SELECT rc.category_id
           FROM role_categories rc
@@ -73,7 +102,8 @@ export const PUT = withApi(async (request, { params }) => {
   const expected = requiredTimestamp(body.expected, 'Expected update time');
   const input = normalizeTaskInput(body, current);
   if (!canEditAllTasks(session)) {
-    input.assigned_to = current.assigned_to;
+    input.assignee_ids = (current.assignee_ids || []).map(Number);
+    input.assigned_to = current.assigned_to === null ? null : Number(current.assigned_to);
     if (!canViewAllTasks(session) && input.category_id) {
       const [allowed] = await getSql()`
         SELECT 1 FROM role_categories rc
@@ -85,25 +115,39 @@ export const PUT = withApi(async (request, { params }) => {
   }
   await validateTaskReferences(input);
   const capacity = taskCapacity();
+  const assigneeIds = input.assignee_ids || [];
   const changes = describeTaskChanges(current, input);
-  const [rows] = await db.transaction(txn => [
+  const [, rows] = await db.transaction(txn => [
     txn`
-      WITH capacity_lock AS MATERIALIZED (
-        SELECT pg_advisory_xact_lock(hashtext(${'task-capacity:' + (input.assigned_to || 0)}))
+      SELECT pg_advisory_xact_lock(hashtext('task-capacity:' || member_id::text))
+      FROM unnest(COALESCE(${assigneeIds}::integer[], ARRAY[]::integer[])) AS member_id
+    `,
+    txn`
+      WITH assignee_list AS (
+        SELECT member_id, ord
+        FROM unnest(COALESCE(${assigneeIds}::integer[], ARRAY[]::integer[])) WITH ORDINALITY AS u(member_id, ord)
+      ), assignee_names AS (
+        SELECT assignee_list.member_id, assignee_list.ord, tm.name
+        FROM assignee_list LEFT JOIN team_members tm ON tm.id = assignee_list.member_id
       ), capacity_ok AS (
-        SELECT 1
-        FROM capacity_lock
-        WHERE ${input.assigned_to}::integer IS NULL
-          OR (
-            SELECT COUNT(*)
-            FROM tasks existing
-            WHERE existing.id <> ${current.id}
-              AND existing.assigned_to = ${input.assigned_to}
-              AND existing.archived_at IS NULL
-              AND existing.status <> 'done'
-              AND existing.start_date <= ${input.due_date}
-              AND existing.due_date >= ${input.start_date}
-          ) < ${capacity}
+        SELECT 1 AS ok
+        FROM assignee_list
+        WHERE (
+          SELECT COUNT(*)
+          FROM tasks existing
+          WHERE existing.id <> ${current.id}
+            AND existing.archived_at IS NULL
+            AND existing.status <> 'done'
+            AND existing.start_date <= ${input.due_date}
+            AND existing.due_date >= ${input.start_date}
+            AND (
+              existing.assigned_to = assignee_list.member_id
+              OR EXISTS (
+                SELECT 1 FROM task_assignees ea
+                WHERE ea.task_id = existing.id AND ea.member_id = assignee_list.member_id
+              )
+            )
+        ) < ${capacity}
       ), updated AS (
         UPDATE tasks
         SET title = ${input.title}, description = ${input.description},
@@ -117,21 +161,36 @@ export const PUT = withApi(async (request, { params }) => {
         FROM capacity_ok
         WHERE id = ${current.id} AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', ${expected}::timestamptz) AND archived_at IS NULL
         RETURNING *
+      ), deleted_assignees AS (
+        DELETE FROM task_assignees
+        WHERE task_id = ${current.id}
+          AND member_id NOT IN (SELECT member_id FROM assignee_list)
+        RETURNING task_id
+      ), upserted_assignees AS (
+        INSERT INTO task_assignees (task_id, member_id, is_primary)
+        SELECT ${current.id}, assignee_list.member_id, assignee_list.member_id = COALESCE(${input.assigned_to}::integer, -1)
+        FROM assignee_list
+        ON CONFLICT (task_id, member_id)
+        DO UPDATE SET is_primary = EXCLUDED.is_primary
+        RETURNING member_id
       ), activity AS (
         INSERT INTO task_activity (task_id, user_id, username, actor, action, details)
         SELECT id, ${session.id}::integer, ${session.username}, ${session.username}, 'updated', ${changes || 'No field changes'}
         FROM updated
       )
-      SELECT * FROM updated
+      SELECT updated.*,
+        ARRAY(SELECT member_id::text FROM assignee_list ORDER BY ord) AS assignee_ids,
+        ARRAY(SELECT name FROM assignee_names ORDER BY ord) AS assignee_names
+      FROM updated
     `,
   ]);
   if (!rows[0]) {
     const latest = await findTask(id);
     const unchanged = latest && new Date(latest.updated_at).getTime() === new Date(expected).getTime();
     if (!unchanged) throw new ApiError(409, 'Task changed since it was loaded');
-    throw new ApiError(409, 'The assigned team member is already at capacity for those dates');
+    throw new ApiError(409, 'One or more assigned team members are already at capacity for those dates');
   }
-  return NextResponse.json({ ...rows[0], task_title: rows[0].title });
+  return NextResponse.json(serializeTask(rows[0]));
 });
 
 export const PATCH = withApi(async (request, { params }) => {

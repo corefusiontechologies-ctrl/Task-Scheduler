@@ -13,6 +13,12 @@ const STATUS_LABELS = {
   done:        'Done',
 };
 
+function assigneeLabel(task) {
+  const names = (task.assignee_names || []).filter(Boolean);
+  if (names.length) return names.join(', ');
+  return task.assigned_name || '';
+}
+
 const STATUS_COLORS = {
   not_started: 'var(--not_started)',
   in_progress: 'var(--in_progress)',
@@ -144,11 +150,15 @@ export default function DashboardPage() {
   }
 
   async function saveTask(form) {
+    const assigneeIds = (form.assignee_ids || (form.assigned_to ? [form.assigned_to] : []))
+      .map(value => Number(value))
+      .filter(Boolean);
     const payload = {
       title: form.task_title,
       description: form.description || '',
       client_name: form.client_name,
-      assigned_to: form.assigned_to ? Number(form.assigned_to) : null,
+      assigned_to: assigneeIds.length ? assigneeIds[0] : null,
+      assignee_ids: assigneeIds,
       category_id: form.category_id ? Number(form.category_id) : null,
       start_date: form.start_date,
       due_date: form.due_date,
@@ -222,14 +232,14 @@ export default function DashboardPage() {
   }
 
   function openNewForm() {
-    setEditing({ client_name:'', task_title:'', assigned_to:'', category_id:'', start_date:'', due_date:'', status:'not_started', payment_status:'unpaid', amount_paid:0, description:'', client_email:'', project_name:'', client_visible:false, priority:'medium' });
+    setEditing({ client_name:'', task_title:'', assigned_to:'', assignee_ids:[], category_id:'', start_date:'', due_date:'', status:'not_started', payment_status:'unpaid', amount_paid:0, description:'', client_email:'', project_name:'', client_visible:false, priority:'medium' });
     setShowForm(true);
   }
 
   function openEditForm(t) {
     setEditing({
       id: t.id, client_name: t.client_name, task_title: t.task_title,
-      assigned_to: t.assigned_to || '', category_id: t.category_id || '',
+      assigned_to: t.assigned_to || '', assignee_ids: (t.assignee_ids || (t.assigned_to ? [t.assigned_to] : [])).map(String), category_id: t.category_id || '',
       start_date: t.start_date?.slice(0,10), due_date: t.due_date?.slice(0,10),
       status: t.status, payment_status: t.payment_status || 'unpaid', amount_paid: t.amount_paid || 0,
       description: t.description || '', client_email: t.client_email || '', project_name: t.project_name || '',
@@ -572,7 +582,8 @@ function ListView({ tasks, invoices, team, categories, onAdd, onEdit, onDelete, 
   const canCopy   = isSuperAdmin || !!perms.perm_view_client_links;
   const myMemberId = team.find(member => String(member.user_id) === String(userId))?.id;
   const canBulk   = canEdit || canDelete;
-  const canEditTask = task => isSuperAdmin || !!perms.perm_edit_tasks || (!!perms.perm_edit_own_tasks && String(task.assigned_to) === String(myMemberId));
+  const canEditTask = task => isSuperAdmin || !!perms.perm_edit_tasks || (!!perms.perm_edit_own_tasks
+    && (task.assignee_ids || (task.assigned_to ? [task.assigned_to] : [])).map(String).includes(String(myMemberId)));
   const active = tasks.filter(t => t.status !== 'done');
   const done   = tasks.filter(t => t.status === 'done');
 
@@ -580,7 +591,9 @@ function ListView({ tasks, invoices, team, categories, onAdd, onEdit, onDelete, 
   const visibleTasks = tasks
     .filter(t => !q || t.client_name?.toLowerCase().includes(q) || t.task_title?.toLowerCase().includes(q))
     .filter(t => filterStatus === 'all' || t.status === filterStatus)
-    .filter(t => filterAssignee === 'all' || (filterAssignee === 'unassigned' ? !t.assigned_to : String(t.assigned_to) === filterAssignee))
+    .filter(t => filterAssignee === 'all' || (filterAssignee === 'unassigned'
+      ? !(t.assignee_ids || (t.assigned_to ? [t.assigned_to] : [])).length
+      : (t.assignee_ids || (t.assigned_to ? [t.assigned_to] : [])).map(String).includes(String(filterAssignee))))
     .filter(t => filterCategory === 'all' || (filterCategory === 'none' ? !t.category_id : String(t.category_id) === filterCategory))
     .filter(t => DUE_FILTERS[filterDue].test(daysUntil(t.due_date)))
     .slice()
@@ -725,7 +738,7 @@ function ListView({ tasks, invoices, team, categories, onAdd, onEdit, onDelete, 
               </div>
               <p className="muted" style={{margin:'4px 0 0', fontSize:13}}>
                 {t.client_name} · {fmt(t.start_date)} → {fmt(t.due_date)}
-                {t.assigned_name ? ` · ${t.assigned_name}` : ''}
+                {assigneeLabel(t) ? ` · ${assigneeLabel(t)}` : ''}
                 {t.payment_status && t.payment_status !== 'unpaid' && (
                   <span style={{marginLeft:6,padding:'1px 7px',borderRadius:10,fontSize:11,fontWeight:600,
                     background: t.payment_status==='paid'?'#e8f5e9':'#fff8e1',
@@ -1067,10 +1080,23 @@ function TaskForm({ editing, team, categories, clientNames, onChange, onSave, on
           </div>
           <div>
             <label>Assigned to</label>
-            <select value={editing.assigned_to||''} onChange={(e)=>set('assigned_to',e.target.value)}>
-              <option value="">Unassigned</option>
+            <select
+              multiple
+              size={Math.min(6, Math.max(3, team.length + 1))}
+              value={editing.assignee_ids||[]}
+              onChange={(e)=>{
+                const values = Array.from(e.target.selectedOptions).map(o=>o.value).filter(Boolean);
+                set('assignee_ids', values);
+                set('assigned_to', values[0] || '');
+              }}
+            >
               {team.map((m)=><option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
+            {(editing.assignee_ids||[]).length > 0 && (
+              <p className="muted" style={{ fontSize: 11, margin: '4px 0 0' }}>
+                Hold Ctrl/Cmd to select several. First selected is primary.
+              </p>
+            )}
           </div>
           <div>
             <label>Category</label>

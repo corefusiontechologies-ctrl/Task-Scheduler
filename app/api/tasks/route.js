@@ -1,10 +1,24 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { getFreshSession } from '@/lib/auth';
 import { can, canEditAllTasks, canViewAllTasks } from '@/lib/access';
 import { db, genToken, getSql } from '@/lib/db';
 import { ApiError, requestJson, withApi } from '@/lib/http';
 import { normalizeTaskInput, TASK_STATUSES, taskCapacity, validateTaskReferences } from '@/lib/tasks';
 import { oneOf, optionalNumber, requiredId, requiredTimestamp } from '@/lib/validation';
+
+function assigneeAggregates(taskAlias, memberAlias) {
+  return `
+  COALESCE(
+    (SELECT array_agg(ta.member_id::text ORDER BY ta.is_primary DESC, ta.member_id)
+     FROM task_assignees ta WHERE ta.task_id = ${taskAlias}.id),
+    CASE WHEN ${taskAlias}.assigned_to IS NULL THEN ARRAY[]::text[] ELSE ARRAY[${taskAlias}.assigned_to::text] END
+  ) AS assignee_ids,
+  COALESCE(
+    (SELECT array_agg(tm2.name ORDER BY ta.is_primary DESC, tm2.name)
+     FROM task_assignees ta JOIN team_members tm2 ON tm2.id = ta.member_id WHERE ta.task_id = ${taskAlias}.id),
+    CASE WHEN ${taskAlias}.assigned_to IS NULL THEN ARRAY[]::text[] ELSE ARRAY[${memberAlias}.name] END
+  ) AS assignee_names`;
+}
 
 const TASK_SELECT = `
   t.id::text, t.title, t.title AS task_title, t.description,
@@ -14,38 +28,56 @@ const TASK_SELECT = `
   t.payment_status, t.amount_paid::float8 AS amount_paid, t.client_visible,
   t.share_token, t.created_by, t.created_at, t.updated_at, t.archived_at,
   c.name AS category_name, c.color AS category_color,
-  tm.name AS assigned_name, tm.position AS assigned_role
+  tm.name AS assigned_name, tm.position AS assigned_role,
+  ${assigneeAggregates('t', 'tm')}
 `;
 
 function serializeTask(task) {
+  const assigneeIds = (task.assignee_ids || []).map(String);
   return {
     ...task,
     task_title: task.task_title || task.title,
     id: String(task.id),
     category_id: task.category_id === null || task.category_id === undefined ? null : String(task.category_id),
     assigned_to: task.assigned_to === null || task.assigned_to === undefined ? null : String(task.assigned_to),
+    assignee_ids: assigneeIds.length ? assigneeIds : task.assigned_to ? [String(task.assigned_to)] : [],
+    assignee_names: task.assignee_names || (task.assigned_name ? [task.assigned_name] : []),
   };
 }
 
 async function createTask(input, actor, token) {
   const capacity = taskCapacity();
-  const [rows] = await db.transaction(txn => [
+  const assigneeIds = input.assignee_ids || [];
+  const [, rows] = await db.transaction(txn => [
     txn`
-      WITH capacity_lock AS MATERIALIZED (
-        SELECT pg_advisory_xact_lock(hashtext(${'task-capacity:' + (input.assigned_to || 0)}))
+      SELECT pg_advisory_xact_lock(hashtext('task-capacity:' || member_id::text))
+      FROM unnest(COALESCE(${assigneeIds}::integer[], ARRAY[]::integer[])) AS member_id
+    `,
+    txn`
+      WITH assignee_list AS (
+        SELECT member_id, ord
+        FROM unnest(COALESCE(${assigneeIds}::integer[], ARRAY[]::integer[])) WITH ORDINALITY AS u(member_id, ord)
+      ), assignee_names AS (
+        SELECT assignee_list.member_id, assignee_list.ord, tm.name
+        FROM assignee_list LEFT JOIN team_members tm ON tm.id = assignee_list.member_id
       ), capacity_ok AS (
-        SELECT 1
-        FROM capacity_lock
-        WHERE ${input.assigned_to}::integer IS NULL
-          OR (
-            SELECT COUNT(*)
-            FROM tasks existing
-            WHERE existing.assigned_to = ${input.assigned_to}
-              AND existing.archived_at IS NULL
-              AND existing.status <> 'done'
-              AND existing.start_date <= ${input.due_date}
-              AND existing.due_date >= ${input.start_date}
-          ) < ${capacity}
+        SELECT 1 AS ok
+        FROM assignee_list
+        WHERE (
+          SELECT COUNT(*)
+          FROM tasks existing
+          WHERE existing.archived_at IS NULL
+            AND existing.status <> 'done'
+            AND existing.start_date <= ${input.due_date}
+            AND existing.due_date >= ${input.start_date}
+            AND (
+              existing.assigned_to = assignee_list.member_id
+              OR EXISTS (
+                SELECT 1 FROM task_assignees ea
+                WHERE ea.task_id = existing.id AND ea.member_id = assignee_list.member_id
+              )
+            )
+        ) < ${capacity}
       ), created AS (
         INSERT INTO tasks (
           title, description, client_name, client_email, project_name,
@@ -59,12 +91,20 @@ async function createTask(input, actor, token) {
           ${input.client_visible}, ${token}, ${actor.username}
         FROM capacity_ok
         RETURNING *
+      ), assignees AS (
+        INSERT INTO task_assignees (task_id, member_id, is_primary)
+        SELECT created.id, assignee_list.member_id, assignee_list.member_id = COALESCE(${input.assigned_to}::integer, -1)
+        FROM created CROSS JOIN assignee_list
+        RETURNING task_id
       ), activity AS (
         INSERT INTO task_activity (task_id, user_id, username, actor, action, details)
         SELECT id, ${actor.id}::integer, ${actor.username}, ${actor.username}, 'created', 'Task created'
         FROM created
       )
-      SELECT * FROM created
+      SELECT created.*,
+        ARRAY(SELECT member_id::text FROM assignee_list ORDER BY ord) AS assignee_ids,
+        ARRAY(SELECT name FROM assignee_names ORDER BY ord) AS assignee_names
+      FROM created
     `,
   ]);
   return rows[0] || null;
@@ -99,7 +139,14 @@ export const GET = withApi(async request => {
           AND (
             EXISTS (
               SELECT 1 FROM team_members member
-              WHERE member.id = t.assigned_to AND member.user_id = $3 AND member.archived_at IS NULL
+              WHERE member.user_id = $3 AND member.archived_at IS NULL
+                AND (
+                  member.id = t.assigned_to
+                  OR EXISTS (
+                    SELECT 1 FROM task_assignees ta
+                    WHERE ta.task_id = t.id AND ta.member_id = member.id
+                  )
+                )
             )
             OR t.category_id IN (
               SELECT rc.category_id
@@ -124,7 +171,7 @@ export const POST = withApi(async request => {
     }
     const inputs = body.tasks.map(item => normalizeTaskInput(item));
     const categoryIds = [...new Set(inputs.map(input => input.category_id).filter(Boolean))];
-    const memberIds = [...new Set(inputs.map(input => input.assigned_to).filter(Boolean))];
+    const memberIds = [...new Set(inputs.flatMap(input => input.assignee_ids || []).filter(Boolean))];
     const sql = getSql();
     if (categoryIds.length) {
       const categories = await sql`SELECT id FROM categories WHERE id = ANY(${categoryIds}) AND archived_at IS NULL`;
@@ -136,7 +183,12 @@ export const POST = withApi(async request => {
     }
     const payload = inputs.map((input, index) => ({ ...input, ordinal: index + 1, token: genToken() }));
     const capacity = taskCapacity();
-    const [rows] = await db.transaction(txn => [
+    const allMemberIds = memberIds.length ? memberIds : [0];
+    const [, rows] = await db.transaction(txn => [
+      txn`
+        SELECT pg_advisory_xact_lock(hashtext('task-capacity:' || member_id::text))
+        FROM unnest(COALESCE(${allMemberIds}::integer[], ARRAY[0]::integer[])) AS member_id
+      `,
       txn`
         WITH input AS (
           SELECT value AS task, ordinality::integer AS ordinal
@@ -151,6 +203,7 @@ export const POST = withApi(async request => {
             task->>'project_name' AS project_name,
             NULLIF(task->>'category_id', '')::integer AS category_id,
             NULLIF(task->>'assigned_to', '')::integer AS assigned_to,
+            COALESCE(task->'assignee_ids', '[]'::jsonb) AS assignee_ids,
             task->>'start_date'::date AS start_date,
             task->>'due_date'::date AS due_date,
             task->>'status' AS status,
@@ -161,26 +214,37 @@ export const POST = withApi(async request => {
             (task->>'client_visible')::boolean AS client_visible,
             task->>'token' AS token
           FROM input
-        ), loads AS (
-          SELECT decoded.*,
-            CASE WHEN assigned_to IS NULL THEN 0 ELSE (
-              SELECT COUNT(*) FROM tasks existing
-              WHERE existing.assigned_to = decoded.assigned_to
-                AND existing.archived_at IS NULL
-                AND existing.status <> 'done'
-                AND existing.start_date <= decoded.due_date
-                AND existing.due_date >= decoded.start_date
-            ) + (
-              SELECT COUNT(*) FROM decoded prior
-              WHERE prior.ordinal < decoded.ordinal
-                AND prior.assigned_to = decoded.assigned_to
-                AND prior.start_date <= decoded.due_date
-                AND prior.due_date >= decoded.start_date
-            ) END AS assigned_load
+        ), pairs AS (
+          SELECT decoded.ordinal, (member.member_id)::integer AS member_id,
+            decoded.start_date, decoded.due_date
           FROM decoded
+          CROSS JOIN LATERAL jsonb_array_elements_text(decoded.assignee_ids) AS member(member_id)
+        ), loads AS (
+          SELECT pairs.*,
+            (
+              SELECT COUNT(*) FROM tasks existing
+              WHERE existing.archived_at IS NULL
+                AND existing.status <> 'done'
+                AND existing.start_date <= pairs.due_date
+                AND existing.due_date >= pairs.start_date
+                AND (
+                  existing.assigned_to = pairs.member_id
+                  OR EXISTS (
+                    SELECT 1 FROM task_assignees ea
+                    WHERE ea.task_id = existing.id AND ea.member_id = pairs.member_id
+                  )
+                )
+            ) + (
+              SELECT COUNT(*) FROM pairs prior
+              WHERE prior.ordinal < pairs.ordinal
+                AND prior.member_id = pairs.member_id
+                AND prior.start_date <= pairs.due_date
+                AND prior.due_date >= pairs.start_date
+            ) AS assigned_load
+          FROM pairs
         ), gate AS (
           SELECT 1 WHERE NOT EXISTS (
-            SELECT 1 FROM loads WHERE assigned_to IS NOT NULL AND assigned_load >= ${capacity}
+            SELECT 1 FROM loads WHERE assigned_load >= ${capacity}
           )
         ), created AS (
           INSERT INTO tasks (
@@ -193,19 +257,42 @@ export const POST = withApi(async request => {
             category_id, assigned_to, start_date, due_date,
             status, priority, progress, payment_status, amount_paid,
             client_visible, token, ${session.username}
-          FROM loads CROSS JOIN gate
+          FROM decoded CROSS JOIN gate
           ORDER BY ordinal
           RETURNING *
+        ), assignees AS (
+          INSERT INTO task_assignees (task_id, member_id, is_primary)
+          SELECT created.id, (member.member_id)::integer,
+            (member.member_id)::integer = COALESCE(decoded.assigned_to, -1)
+          FROM decoded
+          JOIN created ON created.share_token = decoded.token
+          CROSS JOIN LATERAL jsonb_array_elements_text(decoded.assignee_ids) AS member(member_id)
+          RETURNING task_id
         ), activity AS (
           INSERT INTO task_activity (task_id, user_id, username, actor, action, details)
           SELECT id, ${session.id}::integer, ${session.username}, ${session.username}, 'created', 'Task created'
           FROM created
         )
-        SELECT * FROM created ORDER BY id
+        SELECT created.*,
+          ARRAY(SELECT ta.member_id::text FROM ta WHERE ta.task_id = created.id ORDER BY ta.is_primary DESC, ta.member_id) AS assignee_ids,
+          ARRAY(SELECT tm2.name FROM ta JOIN team_members tm2 ON tm2.id = ta.member_id WHERE ta.task_id = created.id ORDER BY ta.is_primary DESC, tm2.name) AS assignee_names
+        FROM created
+        LEFT JOIN task_assignees ta ON ta.task_id = created.id
+        ORDER BY created.id, ta.is_primary DESC NULLS LAST
       `,
     ]);
     if (rows.length !== payload.length) throw new ApiError(409, 'One or more tasks exceed the assignee capacity');
-    return NextResponse.json(rows.map(serializeTask), { status: 201 });
+    const merged = new Map();
+    for (const row of rows) {
+      const existing = merged.get(row.id);
+      if (existing) {
+        existing.assignee_ids = [...new Set([...(existing.assignee_ids || []), ...(row.assignee_ids || [])])].filter(Boolean);
+        existing.assignee_names = [...new Set([...(existing.assignee_names || []), ...(row.assignee_names || [])])].filter(Boolean);
+      } else {
+        merged.set(row.id, { ...row });
+      }
+    }
+    return NextResponse.json([...merged.values()].map(serializeTask), { status: 201 });
   }
 
   const input = normalizeTaskInput(body);
@@ -254,9 +341,14 @@ export const PUT = withApi(async request => {
             OR current.updated_at IS DISTINCT FROM decoded.updated_at
             OR NOT (
               ${canEditAllTasks(session)}
-              OR current.assigned_to IN (
-                SELECT id FROM team_members WHERE user_id = ${session.id} AND archived_at IS NULL
-              )
+            OR EXISTS (
+              SELECT 1 FROM task_assignees ta
+              JOIN team_members member ON member.id = ta.member_id
+              WHERE ta.task_id = current.id AND member.user_id = ${session.id} AND member.archived_at IS NULL
+            )
+            OR current.assigned_to IN (
+              SELECT id FROM team_members WHERE user_id = ${session.id} AND archived_at IS NULL
+            )
             )
         )
       ), updated AS (
