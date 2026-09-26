@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from '../components/Sidebar';
 import { useDarkMode } from '../components/useDarkMode';
+import { useToast } from '../components/Toast';
+import { useConfirm } from '../components/ConfirmDialog';
 
 const PERM_META = [
   { permission: 'view_tasks', label: 'View tasks', desc: 'View tasks' },
@@ -43,12 +45,30 @@ async function readApiResponse(response) {
   return data;
 }
 
+function formatLastLogin(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'unknown';
+  const time = date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const day = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const now = Date.now();
+  const diffMs = now - date.getTime();
+  const minutes = Math.round(diffMs / 60000);
+  if (minutes >= 0 && minutes < 1) return 'just now';
+  if (minutes >= 0 && minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(diffMs / 3600000);
+  if (hours >= 0 && hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  if (diffMs >= 0 && diffMs < 7 * 86400000) return `${Math.round(diffMs / 86400000)} days ago`;
+  return `${day} at ${time}`;
+}
+
 function emptyRole() {
   return { name: '', description: '', color: '#2E7BC4', permissions: [], allowedCategories: [] };
 }
 
 export default function AdminPage() {
   const router = useRouter();
+  const toast = useToast();
+  const confirm = useConfirm();
   const [dark, toggleDark] = useDarkMode();
   const [tab, setTab] = useState('overview');
   const [stats, setStats] = useState(null);
@@ -132,6 +152,7 @@ export default function AdminPage() {
     const method = editUser ? 'PUT' : 'POST';
     try {
       await readApiResponse(await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }));
+      toast.success(editUser ? 'User updated.' : 'User created.');
       setUserForm({ name:'', username:'', password:'', role_id:'', theme:'auto', active:true });
       setEditUser(null);
       await loadAll();
@@ -140,9 +161,11 @@ export default function AdminPage() {
     }
   }
   async function deleteUser(id) {
-    if (!confirm('Remove this user?')) return;
+    const user = users.find(item => String(item.id) === String(id));
+    if (!(await confirm(`Remove ${user?.username || 'this user'}?`, { detail: 'The account is archived and can be restored later. Their tasks and history are kept.' }))) return;
     try {
       await readApiResponse(await fetch(`/api/admin/users/${id}`, { method:'DELETE' }));
+      toast.success('User removed.');
       await loadAll();
     } catch (error) {
       setUserError(error.message);
@@ -170,6 +193,7 @@ export default function AdminPage() {
     const method = editRole ? 'PUT' : 'POST';
     try {
       await readApiResponse(await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }));
+      toast.success(editRole ? 'Role updated.' : 'Role created.');
       setRoleForm(emptyRole());
       setEditRole(null);
       await loadAll();
@@ -178,9 +202,11 @@ export default function AdminPage() {
     }
   }
   async function deleteRole(id) {
-    if (!confirm('Delete this role? Users with this role will lose their permissions.')) return;
+    const role = roles.find(item => String(item.id) === String(id));
+    if (!(await confirm(`Delete the "${role?.name || 'this'}" role?`, { detail: 'The role is archived and can be restored later. A role can only be deleted once no users are assigned to it.' }))) return;
     try {
       await readApiResponse(await fetch(`/api/admin/roles/${id}`, { method:'DELETE' }));
+      toast.success('Role deleted.');
       await loadAll();
     } catch (error) {
       setRoleError(error.message);
@@ -195,6 +221,7 @@ export default function AdminPage() {
     const method = editCat ? 'PUT' : 'POST';
     try {
       await readApiResponse(await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }));
+      toast.success(editCat ? 'Category updated.' : 'Category created.');
       setCatForm({ name:'', color:'#2E7BC4' });
       setEditCat(null);
       await loadAll();
@@ -203,7 +230,8 @@ export default function AdminPage() {
     }
   }
   async function deleteCat(id) {
-    if (!confirm('Delete this category?')) return;
+    const category = categories.find(item => String(item.id) === String(id));
+    if (!(await confirm(`Delete the "${category?.name || 'this'}" category?`, { detail: 'The category is archived and can be restored later. Existing tasks keep their current category.' }))) return;
     try {
       await readApiResponse(await fetch(`/api/admin/categories/${id}`, { method:'DELETE' }));
       await loadAll();
@@ -220,6 +248,7 @@ export default function AdminPage() {
     const method = editingMemberId ? 'PUT' : 'POST';
     try {
       await readApiResponse(await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(memberForm) }));
+      toast.success(editingMemberId ? 'Team member updated.' : 'Team member added.');
       setMemberForm({ name:'', role:'', user_id:'', email:'' });
       setEditingMemberId(null);
       await loadAll();
@@ -238,9 +267,19 @@ export default function AdminPage() {
     setTeamError('');
   }
   async function deleteMember(id) {
-    if (!confirm('Remove this team member?')) return;
+    const member = team.find(item => String(item.id) === String(id));
+    const openCount = tasks.filter(task => {
+      if (task.status === 'done') return false;
+      const ids = task.assignee_ids || (task.assigned_to ? [String(task.assigned_to)] : []);
+      return ids.some(assignee => String(assignee) === String(id));
+    }).length;
+    const detail = openCount
+      ? `${member?.name || 'This member'} still has ${openCount} open task${openCount > 1 ? 's' : ''}. Those assignments stay in place, so the work will not appear as available. Reassign them first if needed.`
+      : 'The team member is archived and can be restored later.';
+    if (!(await confirm(`Remove ${member?.name || 'this team member'} from the team?`, { tone: openCount ? 'danger' : 'neutral', detail }))) return;
     try {
       await readApiResponse(await fetch('/api/team', { method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id }) }));
+      toast.success('Team member removed.');
       if (editingMemberId === id) cancelEditMember();
       await loadAll();
     } catch (error) {
@@ -252,7 +291,8 @@ export default function AdminPage() {
   async function deleteTask(id) {
     setTaskMsg('');
     setTaskError('');
-    if (!confirm('Permanently delete this completed task?')) return;
+    const task = tasks.find(item => String(item.id) === String(id));
+    if (!(await confirm('Permanently delete this completed task?', { tone: 'danger', detail: `This cannot be undone. "${task?.title || 'This task'}" and its history will be removed for good.` }))) return;
     try {
       await readApiResponse(await fetch(`/api/tasks/${id}?permanent=1`, { method:'DELETE' }));
       setTaskMsg('Task deleted permanently.');
@@ -413,7 +453,9 @@ export default function AdminPage() {
                         {!u.active && <span style={{background:'var(--line)',color:'var(--ink-soft)',padding:'1px 7px',borderRadius:10,fontSize:11}}>Inactive</span>}
                       </div>
                       <div className="muted" style={{fontSize:11,marginTop:2}}>
-                        {u.last_login ? `Last login ${new Date(u.last_login).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})}` : 'Never logged in'}
+                        {u.last_login
+                          ? `Last signed in ${formatLastLogin(u.last_login)}`
+                          : 'Never signed in'}
                       </div>
                     </div>
                   </div>

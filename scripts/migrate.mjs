@@ -217,6 +217,8 @@ const statements = [
   )`,
   `ALTER TABLE reminder_deliveries DROP CONSTRAINT IF EXISTS reminder_delivery_status_check`,
   `ALTER TABLE reminder_deliveries ADD CONSTRAINT reminder_delivery_status_check CHECK (status IN ('pending', 'sending', 'retry', 'sent', 'cancelled', 'dead'))`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMPTZ`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_ip VARCHAR(128)`,
   `ALTER TABLE roles ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE roles ADD COLUMN IF NOT EXISTS color VARCHAR(7) NOT NULL DEFAULT '#6B6760'`,
   `ALTER TABLE roles ADD COLUMN IF NOT EXISTS perm_add_tasks BOOLEAN NOT NULL DEFAULT FALSE`,

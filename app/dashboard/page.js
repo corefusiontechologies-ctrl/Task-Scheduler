@@ -4,6 +4,9 @@ import { useRouter } from 'next/navigation';
 import { calcInvoiceTotal } from '@/lib/invoiceMath';
 import { safeCsvCell } from '@/lib/csv';
 import Sidebar from '../components/Sidebar';
+import { useToast } from '../components/Toast';
+import { useConfirm, usePrompt } from '../components/ConfirmDialog';
+import { useCopy } from '../components/useCopy';
 import { useDarkMode } from '../components/useDarkMode';
 
 const STATUS_LABELS = {
@@ -78,6 +81,10 @@ const TASK_PAYMENT_LABELS = {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const toast = useToast();
+  const confirm = useConfirm();
+  const prompt = usePrompt();
+  const copy = useCopy();
   const [tab, setTab] = useState('list');
   const [tasks, setTasks] = useState([]);
   const [team, setTeam] = useState([]);
@@ -181,25 +188,27 @@ export default function DashboardPage() {
     await readApiResponse(response);
     setShowForm(false);
     setEditing(null);
+    toast.success(editing?.id ? 'Task updated.' : 'Task created.');
     loadAll();
   }
 
   async function deleteTask(id, status) {
     if (status === 'done' && !isSuperAdmin) {
-      alert('Only the super admin can delete completed tasks.');
+      toast.error('Only the super admin can delete completed tasks.');
       return;
     }
     if (!isSuperAdmin && !perms.perm_delete_tasks) {
-      alert('You do not have permission to delete tasks.');
+      toast.error('You do not have permission to delete tasks.');
       return;
     }
-    if (!confirm('Delete this task?')) return;
+    if (!(await confirm('Delete this task?', { detail: 'The task moves to trash and can be restored later.' }))) return;
     try {
       const response = await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
       await readApiResponse(response);
+      toast.success('Task moved to trash.');
       loadAll();
     } catch (error) {
-      alert(error.message);
+      toast.error(error.message);
     }
   }
 
@@ -208,17 +217,24 @@ export default function DashboardPage() {
   // so bulk edits go through the exact same rules as a one-off edit.
   async function bulkUpdateStatus(ids, status) {
     if (ids.length === 0) return;
-    if (!confirm(`Change status to "${STATUS_LABELS[status]}" for ${ids.length} task${ids.length>1?'s':''}?`)) return;
+    if (!(await confirm(`Change status to "${STATUS_LABELS[status]}" for ${ids.length} task${ids.length>1?'s':''}?`))) return;
     const updates = ids.map(id => {
       const task = tasks.find(item => item.id === id);
       return task ? { id, status, progress: status === 'done' ? 100 : task.progress, expected: task.updated_at } : null;
     }).filter(Boolean);
-    for (let start = 0; start < updates.length; start += 100) {
-      const response = await fetch('/api/tasks', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tasks: updates.slice(start, start + 100) }),
-      });
-      await readApiResponse(response);
+    if (updates.length === 0) { toast.error('None of the selected tasks could be found. Refresh and try again.'); return; }
+    try {
+      for (let start = 0; start < updates.length; start += 100) {
+        const response = await fetch('/api/tasks', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tasks: updates.slice(start, start + 100) }),
+        });
+        await readApiResponse(response);
+      }
+    } catch (error) {
+      toast.error(`Could not update the status. ${error.message}`);
+      return;
     }
+    toast.success(`${updates.length} task${updates.length>1?'s':''} set to ${STATUS_LABELS[status]}.`);
     loadAll();
   }
 
@@ -226,9 +242,10 @@ export default function DashboardPage() {
     if (ids.length === 0) return;
     const blocked = ids.filter(id => { const t = tasks.find(x=>x.id===id); return t?.status === 'done' && !isSuperAdmin; });
     const doable = ids.filter(id => !blocked.includes(id));
-    if (doable.length === 0) { alert('Only the super admin can trash completed tasks.'); return; }
-    if (!confirm(`Move ${doable.length} task${doable.length>1?'s':''} to trash?${blocked.length ? ` (${blocked.length} completed task(s) skipped — super admin only)` : ''}`)) return;
+    if (doable.length === 0) { toast.error('Only the super admin can trash completed tasks.'); return; }
+    if (!(await confirm(`Move ${doable.length} task${doable.length>1?'s':''} to trash?`, { detail: blocked.length ? `${blocked.length} completed task(s) will be skipped — super admin only.` : undefined }))) return;
     await Promise.all(doable.map(id => fetch(`/api/tasks/${id}`, { method:'DELETE' }).then(readApiResponse)));
+    toast.success(`${doable.length} task${doable.length>1?'s':''} moved to trash.`);
     loadAll();
   }
 
@@ -250,12 +267,10 @@ export default function DashboardPage() {
   }
 
   async function copyLink(token) {
-    try {
-      await navigator.clipboard.writeText(`${origin}/client/${token}`);
+    const copied = await copy(`${origin}/client/${token}`);
+    if (copied) {
       setCopied(token);
       setTimeout(() => setCopied(null), 1800);
-    } catch {
-      setLoadError('The link could not be copied.');
     }
   }
 
@@ -271,17 +286,19 @@ export default function DashboardPage() {
     await readApiResponse(response);
     setShowInvoiceForm(false);
     setEditingInvoice(null);
+    toast.success(id ? 'Invoice updated.' : 'Invoice created.');
     loadAll();
   }
 
   async function deleteInvoice(id) {
-    if (!confirm('Delete this invoice?')) return;
+    if (!(await confirm('Delete this invoice?', { detail: 'The invoice moves to trash and can be restored later.' }))) return;
     try {
       const response = await fetch(`/api/invoices/${id}`, { method:'DELETE' });
       await readApiResponse(response);
+      toast.success('Invoice moved to trash.');
       loadAll();
     } catch (error) {
-      alert(error.message);
+      toast.error(error.message);
     }
   }
 
@@ -290,14 +307,26 @@ export default function DashboardPage() {
     if (!invoice) return;
     let amountPaid;
     if (status === 'partially_paid') {
-      const input = prompt('Amount paid so far:', String(invoice.amount_paid || ''));
+      const total = Number(invoice.total ?? calcInvoiceTotal(invoice.items, invoice.tax_rate, invoice.discount).total);
+      const formatted = `${currencySymbol(invoice.currency)}${money(total)}`;
+      const input = await prompt({
+        title: 'Record a payment',
+        message: 'How much has been paid so far?',
+        detail: `The invoice total is ${formatted}.`,
+        label: 'Amount paid so far',
+        inputMode: 'decimal',
+        defaultValue: invoice.amount_paid || '',
+        validate: raw => {
+          const amount = Number(raw);
+          if (!raw.trim()) return 'Enter an amount.';
+          if (!Number.isFinite(amount)) return 'Enter a valid number.';
+          if (amount <= 0) return 'Enter an amount greater than zero.';
+          if (amount >= total) return `Enter an amount less than ${formatted}.`;
+          return '';
+        },
+      });
       if (input === null) return;
       amountPaid = Number(input);
-      const total = Number(invoice.total ?? calcInvoiceTotal(invoice.items, invoice.tax_rate, invoice.discount).total);
-      if (!Number.isFinite(amountPaid) || amountPaid <= 0 || amountPaid >= total) {
-        alert(`Enter an amount greater than zero and less than ${currencySymbol(invoice.currency)}${money(total)}.`);
-        return;
-      }
     }
     try {
       const response = await fetch(`/api/invoices/${id}`, {
@@ -306,9 +335,10 @@ export default function DashboardPage() {
         body: JSON.stringify({ expected: invoice.updated_at, payment_status: status, ...(amountPaid === undefined ? {} : { amount_paid: amountPaid }) }),
       });
       await readApiResponse(response);
+      toast.success(status === 'partially_paid' ? 'Payment recorded.' : 'Invoice status updated.');
       loadAll();
     } catch (error) {
-      alert(error.message);
+      toast.error(error.message);
     }
   }
 
@@ -334,27 +364,30 @@ export default function DashboardPage() {
 
   async function restoreTask(id) {
     const task = trashTasks.find(item => item.id === id);
-    if (!task?.updated_at) return;
+    if (!task) { toast.error('That task is no longer in the trash. Refresh to see the current list.'); return; }
+    if (!task.updated_at) { toast.error('This task cannot be restored because its last-updated time is missing. Refresh and try again.'); return; }
     try {
       const response = await fetch(`/api/tasks/${id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'restore', expected: task.updated_at }),
       });
       await readApiResponse(response);
-      loadTrash();
-      loadAll();
+      toast.success(`"${task.title}" restored.`, 'It is back in your active task list.');
+      await loadTrash();
+      await loadAll();
     } catch (error) {
-      setLoadError(error.message);
+      toast.error(`Could not restore the task. ${error.message}`);
     }
   }
   async function purgeTask(id) {
-    if (!confirm('Permanently delete this task? This cannot be undone.')) return;
+    if (!(await confirm('Permanently delete this task?', { tone: 'danger', detail: 'This cannot be undone. The task and its history will be removed for good.' }))) return;
     try {
       const response = await fetch(`/api/tasks/${id}?permanent=1`, { method: 'DELETE' });
       await readApiResponse(response);
+      toast.success('Task permanently deleted.');
       loadTrash();
     } catch (error) {
-      setLoadError(error.message);
+      toast.error(error.message);
     }
   }
   async function restoreInvoice(id) {
@@ -366,20 +399,22 @@ export default function DashboardPage() {
         body: JSON.stringify({ action: 'restore', expected: invoice.updated_at }),
       });
       await readApiResponse(response);
+      toast.success('Invoice restored.');
       loadTrash();
       loadAll();
     } catch (error) {
-      setLoadError(error.message);
+      toast.error(error.message);
     }
   }
   async function purgeInvoice(id) {
-    if (!confirm('Permanently delete this invoice? This cannot be undone.')) return;
+    if (!(await confirm('Permanently delete this invoice?', { tone: 'danger', detail: 'This cannot be undone. The invoice, its items, and its payment history will be removed for good.' }))) return;
     try {
       const response = await fetch(`/api/invoices/${id}?permanent=1`, { method: 'DELETE' });
       await readApiResponse(response);
+      toast.success('Invoice permanently deleted.');
       loadTrash();
     } catch (error) {
-      setLoadError(error.message);
+      toast.error(error.message);
     }
   }
 
@@ -398,29 +433,40 @@ export default function DashboardPage() {
   }
   function openTaskFromActivity(id) {
     const t = tasks.find(x => x.id === id);
-    if (!t) { alert('This task is no longer visible — it may have been moved to trash.'); return; }
+    if (!t) { toast.error('This task is no longer visible — it may have been moved to trash.'); return; }
     setTab('list'); openEditForm(t);
   }
   function openInvoiceFromActivity(id) {
     const inv = invoices.find(x => x.id === id);
-    if (!inv) { alert('This invoice is no longer visible — it may have been moved to trash.'); return; }
+    if (!inv) { toast.error('This invoice is no longer visible — it may have been moved to trash.'); return; }
     setTab('invoices'); setEditingInvoice(inv); setShowInvoiceForm(true);
+  }
+
+  async function copyInvoiceLink(invoice) {
+    await copy(`${origin}/invoice/${invoice.share_token}`);
   }
 
   // ── Client portal link ────────────────────────────────────────────
   async function copyClientPortalLink(clientName, clientEmail) {
+    let token;
     try {
       const res = await fetch('/api/client-portal', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ client_name: clientName, client_email: clientEmail || '' }),
       });
-      if (!res.ok) { const d = await res.json().catch(()=>({})); alert(d.error || 'Could not create client link.'); return; }
-      const { token } = await res.json();
-      navigator.clipboard.writeText(`${origin}/client-portal/${token}`);
+      if (!res.ok) { const d = await res.json().catch(()=>({})); toast.error(d.error || 'Could not create client link.'); return; }
+      ({ token } = await res.json());
+    } catch {
+      toast.error('Could not create client link.');
+      return;
+    }
+    const link = `${origin}/client-portal/${token}`;
+    const copied = await copy(link, { success: `Client link created and copied for ${clientName}.` });
+    if (copied) {
       setPortalCopied(clientName);
       setTimeout(() => setPortalCopied(null), 1800);
-    } catch {
-      alert('Could not create client link.');
+    } else {
+      toast.error('The link was created but could not be copied.', { detail: link });
     }
   }
 
@@ -488,8 +534,9 @@ export default function DashboardPage() {
                 onAdd={()=>{setEditingInvoice(null);setShowInvoiceForm(true);}}
                 onEdit={(inv)=>{setEditingInvoice(inv);setShowInvoiceForm(true);}}
                 onDelete={deleteInvoice}
-                onStatusChange={updateInvoiceStatus}
-              />
+      onStatusChange={updateInvoiceStatus}
+      onCopyInvoice={copyInvoiceLink}
+    />
             )}
             {tab==='trash' && (
               <TrashView
@@ -1452,7 +1499,7 @@ function nextInvoiceNumber(invoices) {
 }
 
 // ── Invoice list ────────────────────────────────────────────────────
-function InvoiceList({ invoices, origin, userId, canCreate, canEdit, canEditOwn, canManage, canDelete, canRecordPayments, onAdd, onEdit, onDelete, onStatusChange }) {
+function InvoiceList({ invoices, origin, userId, canCreate, canEdit, canEditOwn, canManage, canDelete, canRecordPayments, onAdd, onEdit, onDelete, onStatusChange, onCopyInvoice }) {
   // Group totals by currency since invoices can be issued in different currencies
   const outstandingByCcy = {};
   const paidThisMonthByCcy = {};
@@ -1520,7 +1567,7 @@ function InvoiceList({ invoices, origin, userId, canCreate, canEdit, canEditOwn,
               <div className="share-link" style={{marginTop:8,maxWidth:420}}>
                 <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>/invoice/{inv.share_token}</span>
                 <button className="secondary" style={{padding:'4px 10px',whiteSpace:'nowrap'}}
-                  onClick={()=>navigator.clipboard.writeText(`${origin}/invoice/${inv.share_token}`)}>Copy link</button>
+                  onClick={() => onCopyInvoice(inv)}>Copy link</button>
               </div>
             </div>
             <div style={{display:'flex',flexDirection:'column',gap:6,flexShrink:0}}>

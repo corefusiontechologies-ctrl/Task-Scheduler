@@ -6,7 +6,8 @@ export default function NotFound() {
       fontFamily: 'system-ui, -apple-system, sans-serif',
     }}>
       <div style={{ fontSize: 40 }}>🔎</div>
-      <h1 style={{ fontSize: 20, margin: 0 }}>Page not found</h1>
+      <h1 style={{ fontSize: 24, margin: 0 }}>404</h1>
+      <h2 style={{ fontSize: 20, margin: 0 }}>Page not found</h2>
       <p style={{ color: '#8a8580', maxWidth: 420, margin: 0, fontSize: 14 }}>
         The page you&apos;re looking for doesn&apos;t exist or may have moved.
       </p>

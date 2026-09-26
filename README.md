@@ -118,11 +118,12 @@ Invoice numbers are `INV-{YEAR}-{NUMBER}` and the sequence is tracked **per year
 
 ## Security notes and current limitations
 
-- **Public rate limiting** — `/client/[token]`, `/client-portal/[token]`, `/invoice/[token]`,
-  and `/availability` allow 60 requests per minute per client IP (60-second window), tracked
-  **in memory per server instance**. When exceeded, the page renders a "Too many requests"
-  notice with HTTP 200 — the App Router server components cannot return 429 directly, so this
-  is a soft block. It is not shared across instances and resets on deploy.
+- **Public rate limiting** — enforced in `proxy.js` for `/client/[token]`, `/client-portal/[token]`,
+  `/invoice/[token]`, and `/availability`: 60 requests per minute per client IP (60-second window).
+  Exceeding the limit returns a real **HTTP 429** with `Retry-After`, `Cache-Control: no-store`, and
+  `X-Robots-Tag: noindex` before the page renders. Tracked **in memory per server instance**, so it is
+  not shared across instances and resets on deploy. `/` and `/login` are not throttled here, since the
+  login form has its own persistent limiter.
 - **Login rate limiting** is separate and persistent: 8 attempts per 15 minutes per IP/username,
   tracked in the `login_attempts` table.
 - **Share tokens never expire** and there is no dedicated "regenerate/revoke link" action.

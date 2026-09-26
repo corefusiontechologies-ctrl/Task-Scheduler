@@ -8,6 +8,7 @@ import { normalizeUsername, oneOf, optionalString, requiredBoolean, requiredId, 
 const USER_FIELDS = `
   u.id::text, u.name, u.username, u.theme, u.role, u.role_id::text,
   u.active, u.archived_at, u.session_version,
+  u.last_login, u.last_login_ip,
   COALESCE(ARRAY(
     SELECT p.name
     FROM permissions p

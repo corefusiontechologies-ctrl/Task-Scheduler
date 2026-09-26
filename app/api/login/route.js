@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getRateLimitState, recordRateLimitAttempt, serializeRateLimitHeaders } from '@/lib/rateLimit';
+import { getRateLimitState, recordRateLimitAttempt, serializeRateLimitHeaders, getClientIp } from '@/lib/rateLimit';
 import { getSql, DatabaseConfigurationError } from '@/lib/db';
 import { hashPassword, passwordNeedsUpgrade, verifyPassword } from '@/lib/password';
 import { sessionCookie, signSession } from '@/lib/session';
@@ -39,6 +39,18 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401, headers });
     }
     await recordRateLimitAttempt(request, username, true);
+
+    // Record the sign-in for the admin "last signed in" column. This must never
+    // block a successful login, so failures are logged and ignored.
+    try {
+      await sql`
+        UPDATE users
+        SET last_login = NOW(), last_login_ip = ${getClientIp(request)}
+        WHERE id = ${user.id}
+      `;
+    } catch (error) {
+      console.error('Failed to record last_login', error);
+    }
 
     if (passwordNeedsUpgrade(user.password_hash)) {
       const upgradedHash = await hashPassword(body.password);
