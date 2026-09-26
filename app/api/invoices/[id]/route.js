@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getFreshSession } from '@/lib/auth';
-import { can, canManageInvoices } from '@/lib/access';
+import { can, canEditAllInvoices, canManageInvoices } from '@/lib/access';
 import { genToken, getSql } from '@/lib/db';
 import { ApiError, requestJson, withApi } from '@/lib/http';
 import { normalizeInvoiceInput, validateInvoiceDates } from '@/lib/invoices';
@@ -10,12 +10,12 @@ import { requiredTimestamp } from '@/lib/validation';
 const INVOICE_SELECT = `
   i.id::text, i.invoice_number, i.client_name, i.client_email,
   i.client_company, i.client_address, i.project_name,
-  i.issue_date, i.issue_date AS invoice_date, i.due_date,
+  i.issue_date::text, i.issue_date::text AS invoice_date, i.due_date::text,
   i.status, i.payment_status, i.currency, i.tax_rate::float8 AS tax_rate,
   i.subtotal::float8 AS subtotal, i.tax_amount::float8 AS tax_amount,
   i.discount::float8 AS discount, i.total::float8 AS total,
   i.amount_paid::float8 AS amount_paid,
-  i.notes, i.terms, i.share_token, i.created_by, i.created_by_id::text,
+  i.notes, i.terms, i.client_visible, i.share_token, i.created_by, i.created_by_id::text,
   i.created_at, i.updated_at, i.archived_at,
   COALESCE((
     SELECT jsonb_agg(jsonb_build_object(
@@ -44,7 +44,7 @@ function canViewInvoice(session, invoice) {
 }
 
 function canEditInvoice(session, invoice) {
-  if (canManageInvoices(session)) return true;
+  if (canEditAllInvoices(session)) return true;
   return can(session, 'edit_own_invoices') && String(invoice.created_by_id) === String(session.id);
 }
 
@@ -69,11 +69,16 @@ export const PUT = withApi(async (request, { params }) => {
   const { id } = await params;
   const current = await findInvoice(id, true);
   if (!current) throw new ApiError(404, 'Invoice not found');
+  if (current.archived_at) throw new ApiError(404, 'Invoice not found');
+  if (!canEditInvoice(session, current)) throw new ApiError(403, 'Invoice editing access is required');
   const body = await requestJson(request);
   const expected = requiredTimestamp(body.expected, 'Expected update time');
   const input = normalizeInvoiceInput(body, current);
   validateInvoiceDates(input.invoice_date, input.due_date);
   const paymentDelta = Math.round((input.amount_paid - Number(current.amount_paid || 0)) * 100) / 100;
+  if (paymentDelta !== 0 && !can(session, 'record_payments')) {
+    throw new ApiError(403, 'Payment recording access is required');
+  }
   const [updated] = await getSql()`
     WITH had_items AS (
       SELECT EXISTS (
@@ -89,7 +94,7 @@ export const PUT = withApi(async (request, { params }) => {
         payment_status = ${input.payment_status}, currency = ${input.currency},
         subtotal = ${input.subtotal}, tax_rate = ${input.tax_rate}, tax_amount = ${input.tax_amount},
         discount = ${input.discount}, total = ${input.total}, amount_paid = ${input.amount_paid}, notes = ${input.notes},
-        terms = ${input.terms}, updated_at = NOW()
+        terms = ${input.terms}, client_visible = ${input.client_visible}, updated_at = NOW()
       WHERE id = ${current.id} AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', ${expected}::timestamptz) AND archived_at IS NULL
       RETURNING *
     ), deleted_items AS (

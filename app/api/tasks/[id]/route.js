@@ -1,4 +1,4 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getFreshSession } from '@/lib/auth';
 import { can, canEditAllTasks, canViewAllTasks, getUserMemberId } from '@/lib/access';
 import { db, genToken, getSql } from '@/lib/db';
@@ -21,10 +21,10 @@ function assigneeAggregates(taskAlias, memberAlias) {
 }
 
 const TASK_SELECT = `
-  t.id::text, t.title, t.title AS task_title, t.description,
+  t.id::text, t.title, t.title AS task_title, t.description, t.notes,
   t.client_name, t.client_email, t.project_name,
   t.category_id::text, t.assigned_to::text,
-  t.start_date, t.due_date, t.status, t.priority, t.progress,
+  t.start_date::text, t.due_date::text, t.status, t.priority, t.progress,
   t.payment_status, t.amount_paid::float8 AS amount_paid, t.client_visible,
   t.share_token, t.created_by, t.created_at, t.updated_at, t.archived_at,
   c.name AS category_name, c.color AS category_color,
@@ -117,10 +117,25 @@ export const PUT = withApi(async (request, { params }) => {
   const capacity = taskCapacity();
   const assigneeIds = input.assignee_ids || [];
   const changes = describeTaskChanges(current, input);
-  const [, rows] = await db.transaction(txn => [
+  const [, , rows] = await db.transaction(txn => [
     txn`
       SELECT pg_advisory_xact_lock(hashtext('task-capacity:' || member_id::text))
       FROM unnest(COALESCE(${assigneeIds}::integer[], ARRAY[]::integer[])) AS member_id
+    `,
+    txn`
+      UPDATE task_assignees
+      SET is_primary = FALSE
+      WHERE task_id = ${current.id}
+        AND is_primary = TRUE
+        AND member_id = ANY(COALESCE(${assigneeIds}::integer[], ARRAY[]::integer[]))
+        AND member_id <> COALESCE(${input.assigned_to}::integer, -1)
+        AND EXISTS (
+          SELECT 1 FROM tasks
+          WHERE id = ${current.id}
+            AND archived_at IS NULL
+            AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', ${expected}::timestamptz)
+          FOR UPDATE
+        )
     `,
     txn`
       WITH assignee_list AS (
@@ -131,26 +146,29 @@ export const PUT = withApi(async (request, { params }) => {
         FROM assignee_list LEFT JOIN team_members tm ON tm.id = assignee_list.member_id
       ), capacity_ok AS (
         SELECT 1 AS ok
-        FROM assignee_list
-        WHERE (
-          SELECT COUNT(*)
-          FROM tasks existing
-          WHERE existing.id <> ${current.id}
-            AND existing.archived_at IS NULL
-            AND existing.status <> 'done'
-            AND existing.start_date <= ${input.due_date}
-            AND existing.due_date >= ${input.start_date}
-            AND (
-              existing.assigned_to = assignee_list.member_id
-              OR EXISTS (
-                SELECT 1 FROM task_assignees ea
-                WHERE ea.task_id = existing.id AND ea.member_id = assignee_list.member_id
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM assignee_list
+          WHERE (
+            SELECT COUNT(*)
+            FROM tasks existing
+            WHERE existing.id <> ${current.id}
+              AND existing.archived_at IS NULL
+              AND existing.status <> 'done'
+              AND existing.start_date <= ${input.due_date}
+              AND existing.due_date >= ${input.start_date}
+              AND (
+                existing.assigned_to = assignee_list.member_id
+                OR EXISTS (
+                  SELECT 1 FROM task_assignees ea
+                  WHERE ea.task_id = existing.id AND ea.member_id = assignee_list.member_id
+                )
               )
-            )
-        ) < ${capacity}
+          ) >= ${capacity}
+        )
       ), updated AS (
         UPDATE tasks
-        SET title = ${input.title}, description = ${input.description},
+        SET title = ${input.title}, description = ${input.description}, notes = ${input.notes},
           client_name = ${input.client_name}, client_email = ${input.client_email},
           project_name = ${input.project_name},
           category_id = ${input.category_id}, assigned_to = ${input.assigned_to},
@@ -179,6 +197,8 @@ export const PUT = withApi(async (request, { params }) => {
         FROM updated
       )
       SELECT updated.*,
+        updated.start_date::text AS start_date,
+        updated.due_date::text AS due_date,
         ARRAY(SELECT member_id::text FROM assignee_list ORDER BY ord) AS assignee_ids,
         ARRAY(SELECT name FROM assignee_names ORDER BY ord) AS assignee_names
       FROM updated

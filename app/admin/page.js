@@ -77,6 +77,7 @@ export default function AdminPage() {
   const [teamError, setTeamError]   = useState('');
 
   const [taskMsg, setTaskMsg]     = useState('');
+  const [taskError, setTaskError] = useState('');
 
   useEffect(() => { loadAll(); loadStats(); }, []);
 
@@ -106,7 +107,7 @@ export default function AdminPage() {
       setTeam(Array.isArray(m) ? m : []);
       setTasks(Array.isArray(t) ? t : []);
     } catch (error) {
-      setTaskMsg(error.message);
+      setTaskError(error.message);
     }
   }
 
@@ -250,13 +251,14 @@ export default function AdminPage() {
   // ── Tasks ──────────────────────────────────────────────────────────
   async function deleteTask(id) {
     setTaskMsg('');
+    setTaskError('');
     if (!confirm('Permanently delete this completed task?')) return;
     try {
       await readApiResponse(await fetch(`/api/tasks/${id}?permanent=1`, { method:'DELETE' }));
-      setTaskMsg('Task moved to trash.');
+      setTaskMsg('Task deleted permanently.');
       await loadAll();
     } catch (error) {
-      setTaskMsg(error.message);
+      setTaskError(error.message);
     }
   }
 
@@ -632,6 +634,7 @@ export default function AdminPage() {
             <strong style={{fontSize:16}}>Completed tasks</strong>
             <p className="muted" style={{fontSize:13,marginTop:4}}>Only you (super admin) can permanently delete completed tasks.</p>
             {taskMsg && <p style={{color:'var(--done)',background:'var(--avail-free-bg)',padding:'8px 12px',borderRadius:8,fontSize:13,marginTop:8}}>{taskMsg}</p>}
+        {taskError && <p style={{color:'#c0392b',background:'#fdecea',padding:'8px 12px',borderRadius:8,fontSize:13,marginTop:8}}>{taskError}</p>}
             {doneTasks.length===0 && <p className="muted">No completed tasks yet.</p>}
             {doneTasks.map(t=>(
               <div key={t.id} className="task-row">

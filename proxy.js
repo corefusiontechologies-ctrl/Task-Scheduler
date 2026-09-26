@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { decodeSession, parseCookieHeader } from './lib/session';
 
-const PUBLIC_PATHS = new Set(['/', '/login', '/api/login', '/availability', '/favicon.ico', '/manifest.webmanifest', '/robots.txt', '/sitemap.xml']);
+const PUBLIC_PATHS = new Set(['/', '/login', '/api/login', '/api/logout', '/availability', '/favicon.ico', '/manifest.webmanifest', '/robots.txt', '/sitemap.xml']);
 const PUBLIC_TOKEN_ROUTES = [/^\/client\/[^/]+\/?$/, /^\/invoice\/[^/]+\/?$/, /^\/client-portal\/[^/]+\/?$/];
 
 function isPublicPath(pathname) {

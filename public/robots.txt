@@ -1,0 +1,10 @@
+User-agent: *
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /api/
+Disallow: /client/
+Disallow: /invoice/
+Disallow: /client-portal/
+Disallow: /availability
+
+Sitemap: /sitemap.xml

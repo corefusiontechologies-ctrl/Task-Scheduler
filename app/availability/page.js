@@ -1,6 +1,8 @@
+import { headers } from 'next/headers';
 import { getSql } from '../../lib/db';
 import { WA_NUMBER, FACEBOOK, INSTAGRAM } from '../../lib/config';
 import { addDays, businessDate, businessMonth, isoDate } from '../../lib/dates';
+import { checkPublicRateLimit } from '../../lib/publicRateLimit';
 import BrandLogo from '../components/BrandLogo';
 
 export const dynamic = 'force-dynamic';
@@ -15,6 +17,17 @@ function fmtLong(value) {
 }
 
 export default async function AvailabilityPage({ searchParams }) {
+  const limit = checkPublicRateLimit({ headers: await headers() });
+  if (limit.limited) {
+    return (
+      <main className="container" style={{ maxWidth: 560 }}>
+        <div className="card" style={{ textAlign: 'center' }}>
+          <h1>Too many requests</h1>
+          <p className="muted">Please wait a minute and try again.</p>
+        </div>
+      </main>
+    );
+  }
   const query = await searchParams;
   const rawOffset = Array.isArray(query?.m) ? query.m[0] : query?.m;
   const parsedOffset = Number.parseInt(rawOffset || '0', 10);

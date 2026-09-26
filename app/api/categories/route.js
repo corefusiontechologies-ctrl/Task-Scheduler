@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getFreshSession } from '@/lib/auth';
-import { canViewAllTasks } from '@/lib/access';
+import { can, canViewAllTasks } from '@/lib/access';
 import { getSql } from '@/lib/db';
 import { ApiError, withApi } from '@/lib/http';
 
 export const GET = withApi(async () => {
   const session = await getFreshSession();
   if (!session) throw new ApiError(401, 'Authentication required');
+  if (!can(session, 'view_tasks')) throw new ApiError(403, 'Task access is required');
   if (canViewAllTasks(session)) {
     const categories = await getSql()`
       SELECT id::text, name, color

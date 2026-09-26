@@ -3,8 +3,14 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import BrandLogo from '../components/BrandLogo';
 
-export default function LoginPage() {
-  const [username, setUsername] = useState('');
+function safeRedirectTarget(fallback) {
+  if (typeof window === 'undefined') return fallback;
+  const requested = new URLSearchParams(window.location.search).get('next');
+  if (!requested || !requested.startsWith('/') || requested.startsWith('//')) return fallback;
+  return requested;
+}
+
+export default function LoginPage() {  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(false);
@@ -40,7 +46,7 @@ export default function LoginPage() {
       setError(data.error || (res.status >= 500 ? 'Login service is temporarily unavailable.' : 'Invalid credentials'));
       return;
     }
-    router.push(data.user?.role === 'superadmin' ? '/admin' : '/dashboard');
+    router.push(safeRedirectTarget(data.user?.role === 'superadmin' ? '/admin' : '/dashboard'));
     router.refresh();
   }
 

@@ -142,6 +142,7 @@ const statements = [
     share_token VARCHAR(255),
     notes TEXT NOT NULL DEFAULT '',
     terms TEXT NOT NULL DEFAULT '',
+    client_visible BOOLEAN NOT NULL DEFAULT FALSE,
     created_by VARCHAR(150) NOT NULL DEFAULT '',
     created_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -292,6 +293,20 @@ const statements = [
   `INSERT INTO task_assignees (task_id, member_id, is_primary)
     SELECT id, assigned_to, TRUE FROM tasks WHERE assigned_to IS NOT NULL
     ON CONFLICT (task_id, member_id) DO NOTHING`,
+  `UPDATE task_assignees SET is_primary = FALSE WHERE is_primary
+    AND task_id NOT IN (SELECT id FROM tasks WHERE assigned_to = task_assignees.member_id)`,
+  `WITH ranked AS (
+    SELECT task_id, member_id,
+      ROW_NUMBER() OVER (PARTITION BY task_id ORDER BY created_at, member_id) AS position
+    FROM task_assignees
+    WHERE is_primary
+  )
+    UPDATE task_assignees SET is_primary = FALSE
+    FROM ranked
+    WHERE task_assignees.task_id = ranked.task_id
+      AND task_assignees.member_id = ranked.member_id
+      AND ranked.position > 1`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS task_assignees_one_primary_index ON task_assignees (task_id) WHERE is_primary`,
   `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS issue_date DATE`,
   `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_date DATE`,
   `UPDATE invoices SET issue_date = COALESCE(issue_date, invoice_date, due_date, CURRENT_DATE) WHERE issue_date IS NULL`,
@@ -321,6 +336,7 @@ const statements = [
   `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
   `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
   `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS client_visible BOOLEAN NOT NULL DEFAULT FALSE`,
   `ALTER TABLE client_portals ADD COLUMN IF NOT EXISTS name VARCHAR(255)`,
   `ALTER TABLE client_portals ADD COLUMN IF NOT EXISTS client_name VARCHAR(255) NOT NULL DEFAULT ''`,
   `ALTER TABLE client_portals ADD COLUMN IF NOT EXISTS client_email VARCHAR(254) NOT NULL DEFAULT ''`,

@@ -150,16 +150,17 @@ export default function DashboardPage() {
   }
 
   async function saveTask(form) {
-    const assigneeIds = (form.assignee_ids || (form.assigned_to ? [form.assigned_to] : []))
-      .map(value => Number(value))
-      .filter(Boolean);
+    const assigneeIds = [...new Set((form.assignee_ids || (form.assigned_to ? [form.assigned_to] : []))
+      .map(value => String(value))
+      .filter(value => /^\d+$/.test(value)))];
     const payload = {
       title: form.task_title,
       description: form.description || '',
+      notes: form.notes || '',
       client_name: form.client_name,
       assigned_to: assigneeIds.length ? assigneeIds[0] : null,
       assignee_ids: assigneeIds,
-      category_id: form.category_id ? Number(form.category_id) : null,
+      category_id: form.category_id ? String(form.category_id) : null,
       start_date: form.start_date,
       due_date: form.due_date,
       status: form.status,
@@ -232,7 +233,7 @@ export default function DashboardPage() {
   }
 
   function openNewForm() {
-    setEditing({ client_name:'', task_title:'', assigned_to:'', assignee_ids:[], category_id:'', start_date:'', due_date:'', status:'not_started', payment_status:'unpaid', amount_paid:0, description:'', client_email:'', project_name:'', client_visible:false, priority:'medium' });
+    setEditing({ client_name:'', task_title:'', assigned_to:'', assignee_ids:[], category_id:'', start_date:'', due_date:'', status:'not_started', payment_status:'unpaid', amount_paid:0, description:'', notes:'', client_email:'', project_name:'', client_visible:false, priority:'medium' });
     setShowForm(true);
   }
 
@@ -242,7 +243,7 @@ export default function DashboardPage() {
       assigned_to: t.assigned_to || '', assignee_ids: (t.assignee_ids || (t.assigned_to ? [t.assigned_to] : [])).map(String), category_id: t.category_id || '',
       start_date: t.start_date?.slice(0,10), due_date: t.due_date?.slice(0,10),
       status: t.status, payment_status: t.payment_status || 'unpaid', amount_paid: t.amount_paid || 0,
-      description: t.description || '', client_email: t.client_email || '', project_name: t.project_name || '',
+      description: t.description || '', notes: t.notes || '', client_email: t.client_email || '', project_name: t.project_name || '',
       client_visible: !!t.client_visible, priority: t.priority || 'medium', updated_at: t.updated_at,
     });
     setShowForm(true);
@@ -1126,7 +1127,10 @@ function TaskForm({ editing, team, categories, clientNames, onChange, onSave, on
         </div>
         <label style={{fontSize:13, color:'var(--ink-soft)'}}>Description</label>
         <textarea rows={4} value={editing.description||''} onChange={(e)=>set('description',e.target.value)}
-          placeholder="Internal task details" style={{marginTop:4}} />
+          placeholder="What is being delivered" style={{marginTop:4}} />
+        <label style={{fontSize:13, color:'var(--ink-soft)', marginTop:10}}>Notes for the client</label>
+        <textarea rows={2} value={editing.notes||''} onChange={(e)=>set('notes',e.target.value)}
+          placeholder="Optional message shown under &quot;Notes from our team&quot; on the client link" style={{marginTop:4}} />
         <label className="checkbox-row">
           <input type="checkbox" checked={!!editing.client_visible} onChange={(e)=>set('client_visible',e.target.checked)} />
           <span>Visible on the client link</span>
@@ -1338,7 +1342,7 @@ function exportTasksCsv(tasks) {
   downloadCsv(`tasks-export-${new Date().toISOString().slice(0,10)}.csv`, tasks, [
     { label: 'Client', value: 'client_name' },
     { label: 'Task', value: 'task_title' },
-    { label: 'Assigned to', value: 'assigned_name' },
+    { label: 'Assigned to', value: t => assigneeLabel(t) },
     { label: 'Category', value: 'category_name' },
     { label: 'Start date', value: t => t.start_date?.slice(0,10) },
     { label: 'Due date', value: t => t.due_date?.slice(0,10) },
@@ -1487,7 +1491,8 @@ function emptyInvoice(invoices) {
     invoice_number: nextInvoiceNumber(invoices),
     client_name:'', client_company:'', client_address:'', client_email:'',
     invoice_date: iso(today), due_date: iso(due),
-    project_name:'', tax_rate:0, discount:0, notes:'', payment_status:'unpaid', amount_paid:0, currency:'PKR',
+      project_name:'', tax_rate:0, discount:0, notes:'', payment_status:'unpaid', amount_paid:0, currency:'PKR',
+      client_visible:false,
     items:[{ description:'', quantity:1, unit_price:0 }],
   };
 }
@@ -1639,6 +1644,11 @@ function InvoiceForm({ invoice, invoices, clientNames, onSave, onCancel }) {
           <label>Notes (optional)</label>
           <textarea rows={2} value={form.notes} onChange={e=>setF('notes',e.target.value)} placeholder="Payment instructions or thank you message..." style={{marginTop:4}} />
         </div>
+
+        <label className="checkbox-row">
+          <input type="checkbox" checked={!!form.client_visible} onChange={(e)=>setF('client_visible',e.target.checked)} />
+          <span>Email the client about this invoice</span>
+        </label>
 
         {form.id && (
           <div style={{marginTop:16, borderTop:'1px solid var(--line)', paddingTop:12}}>

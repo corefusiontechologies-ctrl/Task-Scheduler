@@ -1,4 +1,4 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getFreshSession } from '@/lib/auth';
 import { can, canEditAllTasks, canViewAllTasks } from '@/lib/access';
 import { db, genToken, getSql } from '@/lib/db';
@@ -21,10 +21,10 @@ function assigneeAggregates(taskAlias, memberAlias) {
 }
 
 const TASK_SELECT = `
-  t.id::text, t.title, t.title AS task_title, t.description,
+  t.id::text, t.title, t.title AS task_title, t.description, t.notes,
   t.client_name, t.client_email, t.project_name,
   t.category_id::text, t.assigned_to::text,
-  t.start_date, t.due_date, t.status, t.priority, t.progress,
+  t.start_date::text, t.due_date::text, t.status, t.priority, t.progress,
   t.payment_status, t.amount_paid::float8 AS amount_paid, t.client_visible,
   t.share_token, t.created_by, t.created_at, t.updated_at, t.archived_at,
   c.name AS category_name, c.color AS category_color,
@@ -62,30 +62,33 @@ async function createTask(input, actor, token) {
         FROM assignee_list LEFT JOIN team_members tm ON tm.id = assignee_list.member_id
       ), capacity_ok AS (
         SELECT 1 AS ok
-        FROM assignee_list
-        WHERE (
-          SELECT COUNT(*)
-          FROM tasks existing
-          WHERE existing.archived_at IS NULL
-            AND existing.status <> 'done'
-            AND existing.start_date <= ${input.due_date}
-            AND existing.due_date >= ${input.start_date}
-            AND (
-              existing.assigned_to = assignee_list.member_id
-              OR EXISTS (
-                SELECT 1 FROM task_assignees ea
-                WHERE ea.task_id = existing.id AND ea.member_id = assignee_list.member_id
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM assignee_list
+          WHERE (
+            SELECT COUNT(*)
+            FROM tasks existing
+            WHERE existing.archived_at IS NULL
+              AND existing.status <> 'done'
+              AND existing.start_date <= ${input.due_date}
+              AND existing.due_date >= ${input.start_date}
+              AND (
+                existing.assigned_to = assignee_list.member_id
+                OR EXISTS (
+                  SELECT 1 FROM task_assignees ea
+                  WHERE ea.task_id = existing.id AND ea.member_id = assignee_list.member_id
+                )
               )
-            )
-        ) < ${capacity}
+          ) >= ${capacity}
+        )
       ), created AS (
         INSERT INTO tasks (
-          title, description, client_name, client_email, project_name,
+          title, description, notes, client_name, client_email, project_name,
           category_id, assigned_to, start_date, due_date,
           status, priority, progress, payment_status, amount_paid,
           client_visible, share_token, created_by
         )
-        SELECT ${input.title}, ${input.description}, ${input.client_name}, ${input.client_email}, ${input.project_name},
+        SELECT ${input.title}, ${input.description}, ${input.notes}, ${input.client_name}, ${input.client_email}, ${input.project_name},
           ${input.category_id}, ${input.assigned_to}, ${input.start_date}, ${input.due_date}, ${input.status}, ${input.priority},
           ${input.progress}, ${input.payment_status}, ${input.amount_paid},
           ${input.client_visible}, ${token}, ${actor.username}
@@ -102,6 +105,8 @@ async function createTask(input, actor, token) {
         FROM created
       )
       SELECT created.*,
+        created.start_date::text AS start_date,
+        created.due_date::text AS due_date,
         ARRAY(SELECT member_id::text FROM assignee_list ORDER BY ord) AS assignee_ids,
         ARRAY(SELECT name FROM assignee_names ORDER BY ord) AS assignee_names
       FROM created
@@ -170,8 +175,8 @@ export const POST = withApi(async request => {
       throw new ApiError(400, 'Bulk tasks must contain between 1 and 100 items');
     }
     const inputs = body.tasks.map(item => normalizeTaskInput(item));
-    const categoryIds = [...new Set(inputs.map(input => input.category_id).filter(Boolean))];
-    const memberIds = [...new Set(inputs.flatMap(input => input.assignee_ids || []).filter(Boolean))];
+    const categoryIds = [...new Set(inputs.map(input => input.category_id).filter(Boolean).map(Number))];
+    const memberIds = [...new Set(inputs.flatMap(input => input.assignee_ids || []).filter(Boolean).map(Number))];
     const sql = getSql();
     if (categoryIds.length) {
       const categories = await sql`SELECT id FROM categories WHERE id = ANY(${categoryIds}) AND archived_at IS NULL`;
@@ -195,22 +200,23 @@ export const POST = withApi(async request => {
           FROM jsonb_array_elements(${JSON.stringify(payload)}::jsonb) WITH ORDINALITY
         ), decoded AS (
           SELECT
-            task->>'ordinal'::integer AS ordinal,
+            (task->>'ordinal')::integer AS ordinal,
             task->>'title' AS title,
             task->>'description' AS description,
+            task->>'notes' AS notes,
             task->>'client_name' AS client_name,
             task->>'client_email' AS client_email,
             task->>'project_name' AS project_name,
             NULLIF(task->>'category_id', '')::integer AS category_id,
             NULLIF(task->>'assigned_to', '')::integer AS assigned_to,
             COALESCE(task->'assignee_ids', '[]'::jsonb) AS assignee_ids,
-            task->>'start_date'::date AS start_date,
-            task->>'due_date'::date AS due_date,
+            (task->>'start_date')::date AS start_date,
+            (task->>'due_date')::date AS due_date,
             task->>'status' AS status,
             task->>'priority' AS priority,
-            task->>'progress'::integer AS progress,
+            (task->>'progress')::integer AS progress,
             task->>'payment_status' AS payment_status,
-            task->>'amount_paid'::numeric AS amount_paid,
+            (task->>'amount_paid')::numeric AS amount_paid,
             (task->>'client_visible')::boolean AS client_visible,
             task->>'token' AS token
           FROM input
@@ -248,12 +254,12 @@ export const POST = withApi(async request => {
           )
         ), created AS (
           INSERT INTO tasks (
-            title, description, client_name, client_email, project_name,
+            title, description, notes, client_name, client_email, project_name,
             category_id, assigned_to, start_date, due_date,
             status, priority, progress, payment_status, amount_paid,
             client_visible, share_token, created_by
           )
-          SELECT title, description, client_name, client_email, project_name,
+          SELECT title, description, notes, client_name, client_email, project_name,
             category_id, assigned_to, start_date, due_date,
             status, priority, progress, payment_status, amount_paid,
             client_visible, token, ${session.username}
@@ -272,33 +278,43 @@ export const POST = withApi(async request => {
           INSERT INTO task_activity (task_id, user_id, username, actor, action, details)
           SELECT id, ${session.id}::integer, ${session.username}, ${session.username}, 'created', 'Task created'
           FROM created
+        ), assignee_list AS (
+          SELECT decoded.ordinal, (member.member_id)::integer AS member_id, member.position AS position
+          FROM decoded
+          CROSS JOIN LATERAL jsonb_array_elements_text(decoded.assignee_ids)
+            WITH ORDINALITY AS member(member_id, position)
+        ), assignee_names AS (
+          SELECT assignee_list.ordinal, assignee_list.position, tm2.name
+          FROM assignee_list JOIN team_members tm2 ON tm2.id = assignee_list.member_id
         )
         SELECT created.*,
-          ARRAY(SELECT ta.member_id::text FROM ta WHERE ta.task_id = created.id ORDER BY ta.is_primary DESC, ta.member_id) AS assignee_ids,
-          ARRAY(SELECT tm2.name FROM ta JOIN team_members tm2 ON tm2.id = ta.member_id WHERE ta.task_id = created.id ORDER BY ta.is_primary DESC, tm2.name) AS assignee_names
+          created.start_date::text AS start_date,
+          created.due_date::text AS due_date,
+          ARRAY(SELECT al.member_id::text FROM assignee_list al
+            WHERE al.ordinal = decoded.ordinal ORDER BY al.position) AS assignee_ids,
+          ARRAY(SELECT an.name FROM assignee_names an
+            WHERE an.ordinal = decoded.ordinal ORDER BY an.position) AS assignee_names
         FROM created
-        LEFT JOIN task_assignees ta ON ta.task_id = created.id
-        ORDER BY created.id, ta.is_primary DESC NULLS LAST
+        JOIN decoded ON decoded.token = created.share_token
+        ORDER BY created.id
       `,
     ]);
     if (rows.length !== payload.length) throw new ApiError(409, 'One or more tasks exceed the assignee capacity');
-    const merged = new Map();
-    for (const row of rows) {
-      const existing = merged.get(row.id);
-      if (existing) {
-        existing.assignee_ids = [...new Set([...(existing.assignee_ids || []), ...(row.assignee_ids || [])])].filter(Boolean);
-        existing.assignee_names = [...new Set([...(existing.assignee_names || []), ...(row.assignee_names || [])])].filter(Boolean);
-      } else {
-        merged.set(row.id, { ...row });
-      }
-    }
-    return NextResponse.json([...merged.values()].map(serializeTask), { status: 201 });
+    return NextResponse.json(rows.map(serializeTask), { status: 201 });
   }
 
   const input = normalizeTaskInput(body);
   await validateTaskReferences(input);
   const created = await createTask(input, session, genToken());
-  if (!created) throw new ApiError(409, 'The assigned team member is already at capacity for those dates');
+  if (!created) {
+    const plural = (input.assignee_ids || []).length > 1;
+    throw new ApiError(
+      409,
+      plural
+        ? 'One or more assignees have reached their overlapping task capacity'
+        : 'The assigned team member is already at capacity for those dates',
+    );
+  }
   return NextResponse.json(serializeTask(created), { status: 201 });
 });
 
@@ -310,7 +326,10 @@ export const PUT = withApi(async request => {
   if (!Array.isArray(body.tasks) || body.tasks.length < 1 || body.tasks.length > 100) {
     throw new ApiError(400, 'tasks must contain between 1 and 100 items');
   }
-  const items = body.tasks.map(item => {
+  const items = body.tasks.map((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new ApiError(400, `tasks[${index}] must be an object`);
+    }
     const status = oneOf(item.status, 'Status', TASK_STATUSES);
     return {
       id: requiredId(item.id, 'Task ID'),
@@ -326,10 +345,10 @@ export const PUT = withApi(async request => {
         FROM jsonb_array_elements(${JSON.stringify(items)}::jsonb)
       ), decoded AS (
         SELECT
-          item->>'id'::integer AS id,
+          (item->>'id')::integer AS id,
           item->>'status' AS status,
-          item->>'progress'::integer AS progress,
-          item->>'updated_at'::timestamptz AS updated_at
+          (item->>'progress')::integer AS progress,
+          (item->>'updated_at')::timestamptz AS updated_at
         FROM input
       ), gate AS (
         SELECT 1
@@ -338,7 +357,7 @@ export const PUT = withApi(async request => {
           FROM decoded
           LEFT JOIN tasks current ON current.id = decoded.id AND current.archived_at IS NULL
           WHERE current.id IS NULL
-            OR current.updated_at IS DISTINCT FROM decoded.updated_at
+            OR date_trunc('milliseconds', current.updated_at) IS DISTINCT FROM date_trunc('milliseconds', decoded.updated_at)
             OR NOT (
               ${canEditAllTasks(session)}
             OR EXISTS (
@@ -349,6 +368,12 @@ export const PUT = withApi(async request => {
             OR current.assigned_to IN (
               SELECT id FROM team_members WHERE user_id = ${session.id} AND archived_at IS NULL
             )
+            OR current.category_id IN (
+              SELECT rc.category_id
+              FROM role_categories rc
+              JOIN users u ON u.role_id = rc.role_id
+              WHERE u.id = ${session.id}
+            )
             )
         )
       ), updated AS (
@@ -357,7 +382,8 @@ export const PUT = withApi(async request => {
             progress = CASE WHEN decoded.status = 'done' THEN 100 ELSE COALESCE(decoded.progress, tasks.progress) END,
             updated_at = NOW()
         FROM decoded CROSS JOIN gate
-        WHERE tasks.id = decoded.id AND tasks.updated_at = decoded.updated_at
+        WHERE tasks.id = decoded.id
+          AND date_trunc('milliseconds', tasks.updated_at) = date_trunc('milliseconds', decoded.updated_at)
         RETURNING tasks.*
       ), activity AS (
         INSERT INTO task_activity (task_id, user_id, username, actor, action, details)

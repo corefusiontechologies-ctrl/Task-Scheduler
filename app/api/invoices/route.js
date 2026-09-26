@@ -19,12 +19,12 @@ function serializeInvoice(invoice) {
 const INVOICE_SELECT = `
   i.id::text, i.invoice_number, i.client_name, i.client_email,
   i.client_company, i.client_address, i.project_name,
-  i.issue_date, i.issue_date AS invoice_date, i.due_date,
+  i.issue_date::text, i.issue_date::text AS invoice_date, i.due_date::text,
   i.status, i.payment_status, i.currency, i.tax_rate::float8 AS tax_rate,
   i.subtotal::float8 AS subtotal, i.tax_amount::float8 AS tax_amount,
   i.discount::float8 AS discount, i.total::float8 AS total,
   i.amount_paid::float8 AS amount_paid,
-  i.notes, i.terms, i.share_token, i.created_by, i.created_by_id::text,
+  i.notes, i.terms, i.client_visible, i.share_token, i.created_by, i.created_by_id::text,
   i.created_at, i.updated_at, i.archived_at,
   COALESCE((
     SELECT jsonb_agg(jsonb_build_object(
@@ -95,7 +95,7 @@ export const POST = withApi(async request => {
         invoice_number, client_name, client_email, client_company, client_address,
         project_name, issue_date, invoice_date, due_date, status, payment_status, currency,
         subtotal, tax_rate, tax_amount, discount, total, amount_paid, share_token, notes, terms,
-        created_by, created_by_id
+        client_visible, created_by, created_by_id
       )
       SELECT 'INV-' || counter.year::text || '-' || counter.last_value::text,
         ${input.client_name}, ${input.client_email}, ${input.client_company}, ${input.client_address},
@@ -103,7 +103,8 @@ export const POST = withApi(async request => {
         ${input.payment_status}, ${input.payment_status}, ${input.currency},
         ${input.subtotal}, ${input.tax_rate}, ${input.tax_amount}, ${input.discount}, ${input.total},
         ${input.amount_paid}, ${token},
-        ${input.notes}, ${input.terms}, ${session.username}, ${session.id}::integer
+        ${input.notes}, ${input.terms}, ${input.client_visible},
+        ${session.username}, ${session.id}::integer
       FROM counter
       RETURNING *
     ), item_rows AS (
@@ -129,7 +130,9 @@ export const POST = withApi(async request => {
   `;
   return NextResponse.json(serializeInvoice({
     ...created,
-    invoice_date: created.issue_date,
+    issue_date: String(created.issue_date).slice(0, 10),
+    due_date: String(created.due_date).slice(0, 10),
+    invoice_date: String(created.issue_date).slice(0, 10),
     items: input.items,
     paid_this_month: input.amount_paid,
   }), { status: 201 });

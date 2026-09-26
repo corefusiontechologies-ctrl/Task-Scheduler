@@ -1,5 +1,7 @@
+import { headers } from 'next/headers';
 import { getSql } from '../../../lib/db';
 import { WA_NUMBER, FACEBOOK, INSTAGRAM, COMPANY_NAME, COMPANY_WEBSITE, COMPANY_EMAIL, PAYMENT_ACCOUNTS, PAYMENT_ACCOUNT_NAME } from '../../../lib/config';
+import { checkPublicRateLimit } from '../../../lib/publicRateLimit';
 import { calculateInvoiceTotals } from '../../../lib/invoiceMath';
 import DownloadPdfButton from './DownloadPdfButton';
 import PrintButton from './PrintButton';
@@ -24,6 +26,15 @@ function currencySymbol(code) {
 }
 
 export default async function InvoicePage({ params }) {
+  const limit = checkPublicRateLimit({ headers: await headers() });
+  if (limit.limited) {
+    return (
+      <main className="container" style={{ textAlign: 'center', paddingTop: '4rem' }}>
+        <h1>Too many requests</h1>
+        <p className="muted">Please wait a minute and try again.</p>
+      </main>
+    );
+  }
   const { token } = await params;
   const sql = getSql();
   const rows = await sql`

@@ -10,7 +10,8 @@ export const PUT = withApi(async (request, { params }) => {
   if (!session) throw new ApiError(401, 'Authentication required');
   const { id } = await params;
   const userId = requiredId(id, 'User ID');
-  if (session.role !== 'superadmin' && session.id !== userId) throw new ApiError(403, 'Access denied');
+  const isSelf = String(session.id) === userId;
+  if (session.role !== 'superadmin' && !isSelf) throw new ApiError(403, 'Access denied');
   const body = await requestJson(request);
   const username = normalizeUsername(body.username);
   const name = optionalString(body.name, 'Name', { min: 1, max: 150 });
@@ -19,14 +20,14 @@ export const PUT = withApi(async (request, { params }) => {
   const theme = oneOf(body.theme, 'Theme', ['light', 'dark', 'auto']);
   const password = body.password ? validateNewPassword(body.password) : null;
   const passwordHash = password ? await hashPassword(password) : null;
-  if (session.id === userId && !active) throw new ApiError(400, 'You cannot deactivate your own account');
+  if (isSelf && !active) throw new ApiError(400, 'You cannot deactivate your own account');
   const sql = getSql();
   const roles = await sql`SELECT name FROM roles WHERE id = ${roleId} AND archived_at IS NULL LIMIT 1`;
   if (!roles[0]) throw new ApiError(400, 'Role does not exist');
   const currentRows = await sql`SELECT username, role, role_id::text FROM users WHERE id = ${userId} AND archived_at IS NULL LIMIT 1`;
   const current = currentRows[0];
   if (!current) throw new ApiError(404, 'User not found');
-  if (session.id === userId && String(current.role_id) !== String(roleId)) {
+  if (isSelf && String(current.role_id) !== String(roleId)) {
     throw new ApiError(400, 'You cannot change your own role');
   }
   const removesLastSuperadmin = current.role === 'superadmin' && (roles[0].name !== 'superadmin' || !active);

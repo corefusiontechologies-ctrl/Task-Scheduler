@@ -1,5 +1,7 @@
+import { headers } from 'next/headers';
 import { getSql } from '../../../lib/db';
 import { WA_NUMBER, FACEBOOK, INSTAGRAM } from '../../../lib/config';
+import { checkPublicRateLimit } from '../../../lib/publicRateLimit';
 import BrandLogo from '../../components/BrandLogo';
 
 const STATUS_LABELS = {
@@ -49,6 +51,15 @@ function TaskRow({ task }) {
 }
 
 export default async function ClientPortalPage({ params }) {
+  const limit = checkPublicRateLimit({ headers: await headers() });
+  if (limit.limited) {
+    return (
+      <main className="container" style={{ textAlign: 'center', paddingTop: '4rem' }}>
+        <h1>Too many requests</h1>
+        <p className="muted">Please wait a minute and try again.</p>
+      </main>
+    );
+  }
   const { token } = await params;
   const sql = getSql();
   const portalRows = await sql`
@@ -76,7 +87,9 @@ export default async function ClientPortalPage({ params }) {
         WHERE ta.task_id = task.id
       ) AS assignee_names
     FROM tasks task
-    WHERE task.client_name = ${portal.name} AND task.archived_at IS NULL
+    WHERE task.client_name = ${portal.name}
+      AND task.archived_at IS NULL
+      AND task.client_visible = TRUE
     ORDER BY (task.status = 'done') ASC, task.due_date ASC NULLS LAST, task.id ASC
   `;
 
