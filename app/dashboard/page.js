@@ -1041,7 +1041,7 @@ function MultiSelectDropdown({ options, selected, onChange, placeholder = 'Selec
         <div
           style={{
             position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 20,
-            background: 'var(--bg, #fff)', border: '1px solid var(--line)', borderRadius: 6,
+            background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 6,
             maxHeight: 220, overflowY: 'auto', boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
           }}
         >
@@ -1057,6 +1057,7 @@ function MultiSelectDropdown({ options, selected, onChange, placeholder = 'Selec
                 type="checkbox"
                 checked={selectedSet.has(String(o.id))}
                 onChange={() => toggle(o.id)}
+                style={{ width: 'auto', flexshrink: 0, margin: 0 }}
               />
               <span>{o.name}</span>
             </label>
