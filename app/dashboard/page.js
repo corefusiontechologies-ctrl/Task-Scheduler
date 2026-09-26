@@ -1084,11 +1084,10 @@ function TaskForm({ editing, team, categories, clientNames, onChange, onSave, on
             <select
               multiple
               size={Math.min(6, Math.max(3, team.length + 1))}
-              value={editing.assignee_to||[0]}
+              value={editing.assignee_ids||[]}
               onChange={(e)=>{
                 const values = Array.from(e.target.selectedOptions).map(o=>o.value).filter(Boolean);
-                set('assignee_ids', values);
-                set('assigned_to', values[0] || '');
+                onChange({...editing, assignee_ids: values, assigned_to: values[0] || ''});
               }}
             >
               {team.map((m)=><option key={m.id} value={m.id}>{m.name}</option>)}
