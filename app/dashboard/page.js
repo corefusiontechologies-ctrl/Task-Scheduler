@@ -1000,6 +1000,73 @@ function Modal({ title, onClose, children }) {
 }
 
 // ── Task form ───────────────────────────────────────────────────────
+function MultiSelectDropdown({ options, selected, onChange, placeholder = 'Select…' }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleOutside(e) {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [open]);
+
+  const selectedSet = new Set((selected || []).map(String));
+  const selectedLabels = options.filter(o => selectedSet.has(String(o.id))).map(o => o.name);
+
+  function toggle(id) {
+    const idStr = String(id);
+    const next = selectedSet.has(idStr)
+      ? (selected || []).filter(v => String(v) !== idStr)
+      : [...(selected || []), idStr];
+    onChange(next);
+  }
+
+  return (
+    <div ref={rootRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        className="secondary"
+        style={{ width: '100%', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+        onClick={() => setOpen(o => !o)}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {selectedLabels.length ? selectedLabels.join(', ') : placeholder}
+        </span>
+        <span aria-hidden="true" style={{ marginLeft: 8, color: 'var(--ink-soft)' }}>{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div
+          style={{
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 20,
+            background: 'var(--bg, #fff)', border: '1px solid var(--line)', borderRadius: 6,
+            maxHeight: 220, overflowY: 'auto', boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+          }}
+        >
+          {options.length === 0 && (
+            <div style={{ padding: '8px 10px', fontSize: 13, color: 'var(--ink-soft)' }}>No options available</div>
+          )}
+          {options.map(o => (
+            <label
+              key={o.id}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', cursor: 'pointer', fontSize: 13 }}
+            >
+              <input
+                type="checkbox"
+                checked={selectedSet.has(String(o.id))}
+                onChange={() => toggle(o.id)}
+              />
+              <span>{o.name}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TaskForm({ editing, team, categories, clientNames, onChange, onSave, onCancel }) {
   const [activity, setActivity] = useState([]);
   const [showActivity, setShowActivity] = useState(false);
@@ -1081,20 +1148,17 @@ function TaskForm({ editing, team, categories, clientNames, onChange, onSave, on
           </div>
           <div>
             <label>Assigned to</label>
-            <select
-              multiple
-              size={Math.min(6, Math.max(3, team.length + 1))}
-              value={editing.assignee_ids||[]}
-              onChange={(e)=>{
-                const values = Array.from(e.target.selectedOptions).map(o=>o.value).filter(Boolean);
-                onChange({...editing, assignee_ids: values, assigned_to: values[0] || ''});
+            <MultiSelectDropdown
+              options={team.map(m => ({ id: m.id, name: m.name }))}
+              selected={editing.assignee_ids || []}
+              placeholder="Select team members"
+              onChange={(values) => {
+                onChange({ ...editing, assignee_ids: values, assigned_to: values[0] || '' });
               }}
-            >
-              {team.map((m)=><option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
+            />
             {(editing.assignee_ids||[]).length > 0 && (
               <p className="muted" style={{ fontSize: 11, margin: '4px 0 0' }}>
-                Hold Ctrl/Cmd to select several. First selected is primary.
+                {editing.assignee_ids.length} selected · first checked is primary.
               </p>
             )}
           </div>
@@ -1167,7 +1231,6 @@ function TaskForm({ editing, team, categories, clientNames, onChange, onSave, on
 }
 
 // ── Team view ───────────────────────────────────────────────────────
-
 // ── Calendar view ───────────────────────────────────────────────────
 function CalendarView({ tasks, monthOffset, setMonthOffset, onAdd, onEdit, canAdd }) {
   const [selectedDay, setSelectedDay] = useState(null);
