@@ -1084,7 +1084,7 @@ function TaskForm({ editing, team, categories, clientNames, onChange, onSave, on
             <select
               multiple
               size={Math.min(6, Math.max(3, team.length + 1))}
-              value={editing.assignee_ids||[]}
+              value={editing.assignee_to||[0]}
               onChange={(e)=>{
                 const values = Array.from(e.target.selectedOptions).map(o=>o.value).filter(Boolean);
                 set('assignee_ids', values);
@@ -1168,6 +1168,7 @@ function TaskForm({ editing, team, categories, clientNames, onChange, onSave, on
 }
 
 // ── Team view ───────────────────────────────────────────────────────
+
 // ── Calendar view ───────────────────────────────────────────────────
 function CalendarView({ tasks, monthOffset, setMonthOffset, onAdd, onEdit, canAdd }) {
   const [selectedDay, setSelectedDay] = useState(null);
