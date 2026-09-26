@@ -1,5 +1,6 @@
 import { getSql } from '../../../lib/db';
 import { WA_NUMBER, FACEBOOK, INSTAGRAM } from '../../../lib/config';
+import BrandLogo from '../../components/BrandLogo';
 
 const STATUS_LABELS = {
   not_started: 'Not started',
@@ -55,7 +56,7 @@ export default async function ClientPage({ params }) {
   return (
     <main className="container" style={{ maxWidth: 560 }}>
       <div className="client-hero">
-        <img src="/logo.png" alt="CoreFusion Technologies" className="client-logo" />
+        <BrandLogo className="client-logo" />
         <p className="muted" style={{ marginBottom: 4 }}>{task.client_name}</p>
         <h1 style={{ margin: 0 }}>{task.title}</h1>
       </div>
@@ -115,7 +116,7 @@ export default async function ClientPage({ params }) {
       </div>
 
       <div className="client-footer" style={{ flexDirection: 'column', gap: 12 }}>
-        <img src="/logo.png" alt="CoreFusion Technologies" className="footer-logo" />
+        <BrandLogo className="footer-logo" />
         <p className="muted" style={{ fontSize: 12, margin: 0, textAlign: 'center' }}>
           This page updates automatically as your project progresses.
         </p>

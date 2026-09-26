@@ -93,13 +93,13 @@ export const POST = withApi(async request => {
     ), created AS (
       INSERT INTO invoices (
         invoice_number, client_name, client_email, client_company, client_address,
-        project_name, issue_date, due_date, status, payment_status, currency,
+        project_name, issue_date, invoice_date, due_date, status, payment_status, currency,
         subtotal, tax_rate, tax_amount, discount, total, amount_paid, share_token, notes, terms,
         created_by, created_by_id
       )
       SELECT 'INV-' || counter.year::text || '-' || counter.last_value::text,
         ${input.client_name}, ${input.client_email}, ${input.client_company}, ${input.client_address},
-        ${input.project_name}, ${input.invoice_date}, ${input.due_date},
+        ${input.project_name}, ${input.invoice_date}, ${input.invoice_date}, ${input.due_date},
         ${input.payment_status}, ${input.payment_status}, ${input.currency},
         ${input.subtotal}, ${input.tax_rate}, ${input.tax_amount}, ${input.discount}, ${input.total},
         ${input.amount_paid}, ${token},
@@ -110,7 +110,8 @@ export const POST = withApi(async request => {
       INSERT INTO invoice_items (invoice_id, description, quantity, unit_price, amount)
       SELECT created.id, item.description, item.quantity, item.unit_price, item.amount
       FROM created
-      CROSS JOIN jsonb_array_elements(${JSON.stringify(input.items)}::jsonb) AS item
+      CROSS JOIN jsonb_to_recordset(${JSON.stringify(input.items)}::jsonb)
+        AS item(description text, quantity numeric, unit_price numeric, amount numeric)
       RETURNING invoice_id
     ), payment AS (
       INSERT INTO invoice_payments (invoice_id, amount, actor)
@@ -127,8 +128,8 @@ export const POST = withApi(async request => {
     SELECT * FROM created
   `;
   return NextResponse.json(serializeInvoice({
-    ...created[0],
-    invoice_date: created[0].issue_date,
+    ...created,
+    invoice_date: created.issue_date,
     items: input.items,
     paid_this_month: input.amount_paid,
   }), { status: 201 });

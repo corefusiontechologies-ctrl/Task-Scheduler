@@ -115,7 +115,7 @@ export const PUT = withApi(async (request, { params }) => {
           payment_status = ${input.payment_status}, amount_paid = ${input.amount_paid},
           client_visible = ${input.client_visible}, updated_at = NOW()
         FROM capacity_ok
-        WHERE id = ${current.id} AND updated_at = ${expected} AND archived_at IS NULL
+        WHERE id = ${current.id} AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', ${expected}::timestamptz) AND archived_at IS NULL
         RETURNING *
       ), activity AS (
         INSERT INTO task_activity (task_id, user_id, username, actor, action, details)
@@ -127,7 +127,8 @@ export const PUT = withApi(async (request, { params }) => {
   ]);
   if (!rows[0]) {
     const latest = await findTask(id);
-    if (!latest || latest.updated_at !== expected) throw new ApiError(409, 'Task changed since it was loaded');
+    const unchanged = latest && new Date(latest.updated_at).getTime() === new Date(expected).getTime();
+    if (!unchanged) throw new ApiError(409, 'Task changed since it was loaded');
     throw new ApiError(409, 'The assigned team member is already at capacity for those dates');
   }
   return NextResponse.json({ ...rows[0], task_title: rows[0].title });
@@ -148,15 +149,15 @@ export const PATCH = withApi(async (request, { params }) => {
     const [restored] = await getSql()`
       UPDATE tasks
       SET archived_at = NULL, share_token = ${token}, updated_at = NOW()
-      WHERE id = ${current.id} AND updated_at = ${expected} AND archived_at IS NOT NULL
+      WHERE id = ${current.id} AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', ${expected}::timestamptz) AND archived_at IS NOT NULL
       RETURNING id::text, title, title AS task_title, archived_at, share_token, updated_at
     `;
-    if (!restored[0]) throw new ApiError(409, 'Task changed since it was loaded');
+    if (!restored) throw new ApiError(409, 'Task changed since it was loaded');
     await getSql()`
       INSERT INTO task_activity (task_id, user_id, username, actor, action, details)
       VALUES (${current.id}, ${session.id}::integer, ${session.username}, ${session.username}, 'restored', 'Task restored from trash')
     `;
-    return NextResponse.json(restored[0]);
+    return NextResponse.json(restored);
   }
 
   const current = await findTask(id);
@@ -186,7 +187,7 @@ export const PATCH = withApi(async (request, { params }) => {
       UPDATE tasks
       SET status = ${status}, progress = ${finalProgress},
         payment_status = ${paymentStatus}, amount_paid = ${amountPaid}, updated_at = NOW()
-      WHERE id = ${current.id} AND updated_at = ${expected} AND archived_at IS NULL
+      WHERE id = ${current.id} AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', ${expected}::timestamptz) AND archived_at IS NULL
       RETURNING *
     ), activity AS (
       INSERT INTO task_activity (task_id, user_id, username, actor, action, details)
@@ -195,8 +196,8 @@ export const PATCH = withApi(async (request, { params }) => {
     )
     SELECT * FROM updated
   `;
-  if (!updated[0]) throw new ApiError(409, 'Task changed since it was loaded');
-  return NextResponse.json({ ...updated[0], task_title: updated[0].title });
+  if (!updated) throw new ApiError(409, 'Task changed since it was loaded');
+  return NextResponse.json({ ...updated, task_title: updated.title });
 });
 
 export const DELETE = withApi(async (request, { params }) => {
@@ -222,7 +223,7 @@ export const DELETE = withApi(async (request, { params }) => {
     WHERE id = ${current.id} AND archived_at IS NULL
     RETURNING id::text
   `;
-  if (!archived[0]) throw new ApiError(409, 'Task was already archived');
+  if (!archived) throw new ApiError(409, 'Task was already archived');
   await getSql()`
     INSERT INTO task_activity (task_id, user_id, username, actor, action, details)
     VALUES (${current.id}, ${session.id}::integer, ${session.username}, ${session.username}, 'archived', 'Task archived and public link revoked')

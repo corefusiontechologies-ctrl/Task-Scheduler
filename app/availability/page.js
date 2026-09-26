@@ -1,6 +1,7 @@
 import { getSql } from '../../lib/db';
 import { WA_NUMBER, FACEBOOK, INSTAGRAM } from '../../lib/config';
 import { addDays, businessDate, businessMonth, isoDate } from '../../lib/dates';
+import BrandLogo from '../components/BrandLogo';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,7 +54,7 @@ export default async function AvailabilityPage({ searchParams }) {
   return (
     <main className="container" style={{ maxWidth: 560 }}>
       <div className="client-hero">
-        <img src="/logo.png" alt="CoreFusion Technologies" className="client-logo" />
+        <BrandLogo className="client-logo" />
         <h1 style={{ margin: 0 }}>Current availability</h1>
       </div>
 
@@ -104,7 +105,7 @@ export default async function AvailabilityPage({ searchParams }) {
       </div>
 
       <div className="client-footer" style={{ flexDirection: 'column', gap: 12 }}>
-        <img src="/logo.png" alt="CoreFusion Technologies" className="footer-logo" />
+        <BrandLogo className="footer-logo" />
         <p className="muted" style={{ fontSize: 12, margin: 0, textAlign: 'center' }}>
           This page updates automatically as the schedule changes.
         </p>

@@ -24,7 +24,7 @@ export const GET = withApi(async (request, { params }) => {
   const activity = await sql`
     SELECT id::text, user_id::text, username, actor, action, details, created_at
     FROM task_activity
-    WHERE NULLIF(details, '')::jsonb->>'invoice_id' = ${String(id)}
+    WHERE substring(details from '"invoice_id": *([0-9]+)') = ${String(id)}
     ORDER BY created_at DESC, id DESC
     LIMIT 200
   `;

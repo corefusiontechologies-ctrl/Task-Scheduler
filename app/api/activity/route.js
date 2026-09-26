@@ -50,7 +50,7 @@ export const GET = withApi(async () => {
           SELECT ta.id::text, ta.action, ta.details, ta.actor, ta.username, ta.created_at,
             i.id::text AS ref_id, i.invoice_number AS title, i.client_name
           FROM task_activity ta
-          JOIN invoices i ON i.id::text = NULLIF(ta.details, '')::jsonb->>'invoice_id'
+          JOIN invoices i ON i.id::text = substring(ta.details from '"invoice_id": *([0-9]+)')
           WHERE i.archived_at IS NULL
           ORDER BY ta.created_at DESC, ta.id DESC
           LIMIT 40
@@ -59,12 +59,27 @@ export const GET = withApi(async () => {
           SELECT ta.id::text, ta.action, ta.details, ta.actor, ta.username, ta.created_at,
             i.id::text AS ref_id, i.invoice_number AS title, i.client_name
           FROM task_activity ta
-          JOIN invoices i ON i.id::text = NULLIF(ta.details, '')::jsonb->>'invoice_id'
+          JOIN invoices i ON i.id::text = substring(ta.details from '"invoice_id": *([0-9]+)')
           WHERE i.archived_at IS NULL AND i.created_by_id = ${session.id}
           ORDER BY ta.created_at DESC, ta.id DESC
           LIMIT 40
         `;
   }
+
+  const invoiceMessage = row => {
+    const who = row.actor || row.username;
+    const details = row.details || '';
+    if (row.action === 'payment_recorded') {
+      const amount = /"amount":\s*"?([0-9.]+)"?/.exec(details)?.[1];
+      return `${who} recorded a payment of ${amount ?? 'unknown amount'} on ${row.title}`;
+    }
+    if (row.action === 'invoice_created') return `${who} created invoice ${row.title}`;
+    if (row.action === 'invoice_updated') return `${who} updated invoice ${row.title}`;
+    if (row.action === 'invoice_archived') return `${who} archived invoice ${row.title}`;
+    if (row.action === 'invoice_restored') return `${who} restored invoice ${row.title}`;
+    if (row.action === 'invoice_deleted') return `${who} deleted invoice ${row.title}`;
+    return `${who} ${row.action.replaceAll('_', ' ')} ${row.title}`;
+  };
 
   const combined = [
     ...taskActivity.map(row => ({
@@ -81,7 +96,7 @@ export const GET = withApi(async () => {
       type: 'invoice',
       id: `i${row.id}`,
       action: row.action,
-      message: `${row.actor || row.username} ${row.action.replaceAll('_', ' ')}${row.details ? `: ${row.details}` : ''}`,
+      message: invoiceMessage(row),
       created_at: row.created_at,
       refId: row.ref_id,
       title: row.title,

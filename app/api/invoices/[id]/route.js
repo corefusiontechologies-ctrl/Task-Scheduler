@@ -75,58 +75,60 @@ export const PUT = withApi(async (request, { params }) => {
   validateInvoiceDates(input.invoice_date, input.due_date);
   const paymentDelta = Math.round((input.amount_paid - Number(current.amount_paid || 0)) * 100) / 100;
   const [updated] = await getSql()`
-    WITH current_items AS (
-      SELECT updated.*, EXISTS(
-        SELECT 1 FROM invoice_items existing WHERE existing.invoice_id = updated.id
-      ) AS had_items
-      FROM (
-        UPDATE invoices
-        SET client_name = ${input.client_name}, client_email = ${input.client_email},
-          client_company = ${input.client_company}, client_address = ${input.client_address},
-          project_name = ${input.project_name}, issue_date = ${input.invoice_date},
-          due_date = ${input.due_date}, status = ${input.payment_status},
-          payment_status = ${input.payment_status}, currency = ${input.currency},
-          subtotal = ${input.subtotal}, tax_rate = ${input.tax_rate}, tax_amount = ${input.tax_amount},
-          discount = ${input.discount}, total = ${input.total}, amount_paid = ${input.amount_paid}, notes = ${input.notes},
-          terms = ${input.terms}, updated_at = NOW()
-        WHERE id = ${current.id} AND updated_at = ${expected} AND archived_at IS NULL
-        RETURNING *
-      ) updated
+    WITH had_items AS (
+      SELECT EXISTS (
+        SELECT 1 FROM invoice_items existing WHERE existing.invoice_id = ${current.id}
+      ) AS had
+    ), updated AS (
+      UPDATE invoices
+      SET client_name = ${input.client_name}, client_email = ${input.client_email},
+        client_company = ${input.client_company}, client_address = ${input.client_address},
+        project_name = ${input.project_name}, issue_date = ${input.invoice_date},
+        invoice_date = ${input.invoice_date},
+        due_date = ${input.due_date}, status = ${input.payment_status},
+        payment_status = ${input.payment_status}, currency = ${input.currency},
+        subtotal = ${input.subtotal}, tax_rate = ${input.tax_rate}, tax_amount = ${input.tax_amount},
+        discount = ${input.discount}, total = ${input.total}, amount_paid = ${input.amount_paid}, notes = ${input.notes},
+        terms = ${input.terms}, updated_at = NOW()
+      WHERE id = ${current.id} AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', ${expected}::timestamptz) AND archived_at IS NULL
+      RETURNING *
     ), deleted_items AS (
       DELETE FROM invoice_items
-      USING current_items
-      WHERE invoice_items.invoice_id = current_items.id
+      USING updated
+      WHERE invoice_items.invoice_id = updated.id
       RETURNING invoice_items.invoice_id
     ), ready_items AS (
-      SELECT current_items.id
-      FROM current_items
+      SELECT updated.id
+      FROM updated
+      CROSS JOIN had_items
       LEFT JOIN (
         SELECT DISTINCT invoice_id FROM deleted_items
-      ) deleted ON deleted.invoice_id = current_items.id
-      WHERE NOT current_items.had_items OR deleted.invoice_id IS NOT NULL
+      ) deleted ON deleted.invoice_id = updated.id
+      WHERE NOT had_items.had OR deleted.invoice_id IS NOT NULL
     ), inserted_items AS (
       INSERT INTO invoice_items (invoice_id, description, quantity, unit_price, amount)
       SELECT ready_items.id, item.description, item.quantity, item.unit_price, item.amount
       FROM ready_items
-      CROSS JOIN jsonb_array_elements(${JSON.stringify(input.items)}::jsonb) AS item
+      CROSS JOIN jsonb_to_recordset(${JSON.stringify(input.items)}::jsonb)
+        AS item(description text, quantity numeric, unit_price numeric, amount numeric)
       RETURNING invoice_id
     ), payment AS (
       INSERT INTO invoice_payments (invoice_id, amount, actor)
       SELECT id, ${paymentDelta}, ${session.username}
-      FROM current_items
+      FROM updated
       WHERE ${paymentDelta} <> 0
       RETURNING invoice_id
     ), activity AS (
       INSERT INTO task_activity (user_id, username, actor, action, details)
       SELECT ${session.id}::integer, ${session.username}, ${session.username}, 'invoice_updated',
-        jsonb_build_object('invoice_id', current_items.id, 'invoice_number', invoices.invoice_number)::text
-      FROM current_items
-      JOIN invoices ON invoices.id = current_items.id
+        jsonb_build_object('invoice_id', updated.id, 'invoice_number', invoices.invoice_number)::text
+      FROM updated
+      JOIN invoices ON invoices.id = updated.id
     )
-    SELECT * FROM current_items
+    SELECT * FROM updated
   `;
-  if (!updated[0]) throw new ApiError(409, 'Invoice changed since it was loaded');
-  return NextResponse.json(serializeInvoice({ ...updated[0], items: input.items }));
+  if (!updated) throw new ApiError(409, 'Invoice changed since it was loaded');
+  return NextResponse.json(serializeInvoice({ ...updated, items: input.items }));
 });
 
 export const PATCH = withApi(async (request, { params }) => {
@@ -144,16 +146,16 @@ export const PATCH = withApi(async (request, { params }) => {
     const [restored] = await getSql()`
       UPDATE invoices
       SET archived_at = NULL, share_token = ${token}, updated_at = NOW()
-      WHERE id = ${current.id} AND updated_at = ${expected} AND archived_at IS NOT NULL
+      WHERE id = ${current.id} AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', ${expected}::timestamptz) AND archived_at IS NOT NULL
       RETURNING id::text, invoice_number, archived_at, share_token, updated_at
     `;
-    if (!restored[0]) throw new ApiError(409, 'Invoice changed since it was loaded');
+    if (!restored) throw new ApiError(409, 'Invoice changed since it was loaded');
     await getSql()`
       INSERT INTO task_activity (user_id, username, actor, action, details)
       VALUES (${session.id}::integer, ${session.username}, ${session.username}, 'invoice_restored',
         ${JSON.stringify({ invoice_id: current.id, invoice_number: current.invoice_number })})
     `;
-    return NextResponse.json(restored[0]);
+    return NextResponse.json(restored);
   }
   if (!can(session, 'record_payments')) throw new ApiError(403, 'Payment recording access is required');
   if (current.archived_at) throw new ApiError(404, 'Invoice not found');
@@ -174,7 +176,7 @@ export const PATCH = withApi(async (request, { params }) => {
     WITH updated AS (
       UPDATE invoices
       SET payment_status = ${paymentStatus}, status = ${paymentStatus}, amount_paid = ${amountPaid}, updated_at = NOW()
-      WHERE id = ${current.id} AND updated_at = ${expected} AND archived_at IS NULL
+      WHERE id = ${current.id} AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', ${expected}::timestamptz) AND archived_at IS NULL
       RETURNING *
     ), payment AS (
       INSERT INTO invoice_payments (invoice_id, amount, actor)
@@ -183,13 +185,13 @@ export const PATCH = withApi(async (request, { params }) => {
     ), activity AS (
       INSERT INTO task_activity (user_id, username, actor, action, details)
       SELECT ${session.id}::integer, ${session.username}, ${session.username}, 'payment_recorded',
-        jsonb_build_object('invoice_id', updated.id, 'amount', ${amountPaid}, 'status', ${paymentStatus})::text
+        jsonb_build_object('invoice_id', updated.id, 'amount', ${amountPaid}::numeric, 'status', ${paymentStatus}::text)::text
       FROM updated
     )
     SELECT * FROM updated
   `;
-  if (!updated[0]) throw new ApiError(409, 'Invoice changed since it was loaded');
-  return NextResponse.json(updated[0]);
+  if (!updated) throw new ApiError(409, 'Invoice changed since it was loaded');
+  return NextResponse.json(updated);
 });
 
 export const DELETE = withApi(async (request, { params }) => {
@@ -217,7 +219,7 @@ export const DELETE = withApi(async (request, { params }) => {
     WHERE id = ${current.id} AND archived_at IS NULL
     RETURNING id::text
   `;
-  if (!archived[0]) throw new ApiError(409, 'Invoice was already archived');
+  if (!archived) throw new ApiError(409, 'Invoice was already archived');
   await getSql()`
     INSERT INTO task_activity (user_id, username, actor, action, details)
     VALUES (${session.id}::integer, ${session.username}, ${session.username}, 'invoice_archived',

@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import BrandLogo from '../components/BrandLogo';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -47,7 +48,7 @@ export default function LoginPage() {
     <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'var(--bg)',padding:'1rem'}}>
       <div className="card" style={{width:'100%',maxWidth:380,textAlign:'center'}}>
         <div className="login-header">
-          <img src="/logo.png" alt="CoreFusion Technologies" className="login-logo" />
+          <BrandLogo className="login-logo" />
         </div>
         <h2 style={{margin:'0 0 1.5rem',fontSize:18}}>Sign in to your account</h2>
         {error && <p style={{color:'#c0392b',background:'#fdecea',padding:'8px 12px',borderRadius:8,marginBottom:12,fontSize:14}}>{error}</p>}

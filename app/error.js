@@ -31,7 +31,7 @@ export default function GlobalError({ error, reset }) {
         >
           Back to dashboard
         </a>
-      </div>
+      </div> 
     </div>
   );
 }

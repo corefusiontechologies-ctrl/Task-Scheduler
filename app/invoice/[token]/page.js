@@ -3,6 +3,7 @@ import { WA_NUMBER, FACEBOOK, INSTAGRAM, COMPANY_NAME, COMPANY_WEBSITE, COMPANY_
 import { calculateInvoiceTotals } from '../../../lib/invoiceMath';
 import DownloadPdfButton from './DownloadPdfButton';
 import PrintButton from './PrintButton';
+import BrandLogo from '../../components/BrandLogo';
 
 function fmt(value) {
   if (!value) return '';
@@ -46,7 +47,6 @@ export default async function InvoicePage({ params }) {
     FROM invoices invoice
     LEFT JOIN invoice_items item ON item.invoice_id = invoice.id
     WHERE invoice.share_token = ${String(token || '')}
-      AND invoice.client_visible = TRUE
       AND invoice.archived_at IS NULL
     GROUP BY invoice.id
     LIMIT 1
@@ -77,7 +77,7 @@ export default async function InvoicePage({ params }) {
         <article id="invoice-printable" className="invoice-card" style={{ background: '#fff', borderRadius: 16, boxShadow: '0 2px 24px rgba(0,0,0,0.08)', padding: '2.5rem', color: '#1a1a1a' }}>
           <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
             <div>
-              <img src="/logo.png" alt={COMPANY_NAME} style={{ height: 56, width: 'auto', maxWidth: 220, marginBottom: 8 }} />
+              <BrandLogo alt={COMPANY_NAME} style={{ height: 56, width: 'auto', maxWidth: 220, marginBottom: 8 }} />
               <p style={{ margin: '4px 0', fontSize: 13, color: '#555' }}>{COMPANY_NAME}</p>
               <p style={{ margin: '4px 0', fontSize: 13, color: '#555' }}>{COMPANY_WEBSITE}</p>
               <p style={{ margin: '4px 0', fontSize: 13, color: '#555' }}>{COMPANY_EMAIL}</p>
