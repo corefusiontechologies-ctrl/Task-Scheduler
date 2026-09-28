@@ -366,6 +366,7 @@ export default function DashboardPage() {
     const task = trashTasks.find(item => item.id === id);
     if (!task) { toast.error('That task is no longer in the trash. Refresh to see the current list.'); return; }
     if (!task.updated_at) { toast.error('This task cannot be restored because its last-updated time is missing. Refresh and try again.'); return; }
+    if (!(await confirm(`Restore "${task.title}"?`, { detail: 'It will move back to your active task list.' }))) return;
     try {
       const response = await fetch(`/api/tasks/${id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -392,18 +393,20 @@ export default function DashboardPage() {
   }
   async function restoreInvoice(id) {
     const invoice = trashInvoices.find(item => item.id === id);
-    if (!invoice?.updated_at) return;
+    if (!invoice) { toast.error('That invoice is no longer in the trash. Refresh to see the current list.'); return; }
+    if (!invoice.updated_at) { toast.error('This invoice cannot be restored because its last-updated time is missing. Refresh and try again.'); return; }
+    if (!(await confirm(`Restore invoice ${invoice.invoice_number}?`, { detail: 'It will move back to your active invoice list.' }))) return;
     try {
       const response = await fetch(`/api/invoices/${id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'restore', expected: invoice.updated_at }),
       });
       await readApiResponse(response);
-      toast.success('Invoice restored.');
-      loadTrash();
-      loadAll();
+      toast.success(`Invoice ${invoice.invoice_number} restored.`, 'It is back in your active invoice list.');
+      await loadTrash();
+      await loadAll();
     } catch (error) {
-      toast.error(error.message);
+      toast.error(`Could not restore the invoice. ${error.message}`);
     }
   }
   async function purgeInvoice(id) {
@@ -498,7 +501,7 @@ export default function DashboardPage() {
       />
 
       <div className="app-main">
-      <div className="container">
+      <div className="container app">
         {loadError && <div className="alert error-alert" role="alert">{loadError}</div>}
         {loading ? (
           <DashboardSkeleton />

@@ -332,7 +332,7 @@ export default function AdminPage() {
       />
 
       <div className="app-main">
-      <div className="container">
+      <div className="container app">
 
         {/* ── OVERVIEW ── */}
         {tab==='overview' && (

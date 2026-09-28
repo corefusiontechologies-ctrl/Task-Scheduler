@@ -1020,3 +1020,209 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   .confirm-footer { flex-direction: column-reverse; }
   .confirm-footer button { width: 100%; }
 }
+
+/* ============================================================
+   Refinement layer — premium craft pass
+   Brand hues are unchanged; this only raises the finish:
+   softer radii, layered shadows, richer surfaces, motion.
+   Deliberately does not touch .sidebar layout.
+   ============================================================ */
+
+:root {
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius:    14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --dur:  160ms;
+
+  /* Layered, warm-tinted elevation. */
+  --shadow-xs: 0 1px 2px rgba(26,24,22,0.05);
+  --shadow-sm: 0 1px 2px rgba(26,24,22,0.04), 0 2px 4px rgba(26,24,22,0.04);
+  --shadow:    0 1px 2px rgba(26,24,22,0.04), 0 4px 10px rgba(26,24,22,0.06);
+  --shadow-lg: 0 2px 4px rgba(26,24,22,0.04), 0 12px 28px rgba(26,24,22,0.10);
+  --shadow-xl: 0 4px 8px rgba(26,24,22,0.05), 0 24px 56px rgba(26,24,22,0.14);
+
+  --surface-2: #FBF8F3;
+  --hairline:  rgba(26,24,22,0.07);
+}
+
+[data-theme="dark"] {
+  --shadow-xs: 0 1px 2px rgba(0,0,0,0.40);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.40), 0 2px 6px rgba(0,0,0,0.35);
+  --shadow:    0 1px 2px rgba(0,0,0,0.40), 0 6px 16px rgba(0,0,0,0.45);
+  --shadow-lg: 0 2px 6px rgba(0,0,0,0.45), 0 16px 36px rgba(0,0,0,0.55);
+  --shadow-xl: 0 4px 10px rgba(0,0,0,0.50), 0 30px 64px rgba(0,0,0,0.60);
+
+  --surface-2: #262320;
+  --hairline:  rgba(240,237,232,0.08);
+}
+
+/* ── Typography ── */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.006em;
+}
+
+h1, h2, h3, h4 {
+  letter-spacing: -0.022em;
+  font-weight: 650;
+  line-height: 1.22;
+}
+
+td, th, .badge, input[type="date"], input[type="number"], .num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Refined scrollbars ── */
+* { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--ink-soft); background-clip: content-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* ── Buttons ── */
+button {
+  border-radius: var(--radius);
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 88%, #fff) 0%,
+    var(--accent) 52%,
+    var(--accent-dark) 100%
+  );
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,0.16);
+  transition: transform var(--dur) var(--ease),
+              box-shadow var(--dur) var(--ease),
+              filter var(--dur) var(--ease);
+}
+button:hover {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 84%, #fff) 0%,
+    var(--accent) 52%,
+    var(--accent-dark) 100%
+  );
+  transform: translateY(-1px);
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,0.16);
+}
+button:active { transform: translateY(0); box-shadow: var(--shadow-xs); }
+
+/* Variants stay flat — no gradient bleed. */
+button.secondary,
+button.danger,
+.tabs button,
+.confirm-footer button.secondary,
+.theme-btn {
+  background-image: none;
+}
+button.secondary:hover,
+button.danger:hover,
+.tabs button:hover { transform: translateY(-1px); }
+
+.tabs button.active {
+  background-image: none;
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  font-weight: 600;
+}
+.tabs button.active:hover { transform: none; }
+
+/* ── Inputs ── */
+input, select, textarea {
+  border-radius: var(--radius-sm);
+  box-shadow: inset 0 1px 2px rgba(26,24,22,0.03);
+  transition: border-color var(--dur) var(--ease),
+              box-shadow var(--dur) var(--ease);
+}
+[data-theme="dark"] input,
+[data-theme="dark"] select,
+[data-theme="dark"] textarea { box-shadow: none; }
+input:focus, select:focus, textarea:focus {
+  box-shadow: 0 0 0 3px var(--accent-soft), inset 0 1px 2px rgba(26,24,22,0.03);
+}
+
+::selection { background: var(--accent-soft); color: var(--accent-dark); }
+
+/* ── Surfaces ── */
+.card {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  border-color: var(--hairline);
+}
+
+.topbar {
+  backdrop-filter: saturate(180%) blur(12px);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  box-shadow: var(--shadow-xs);
+}
+
+.login-card {
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  border-color: var(--hairline);
+}
+
+.badge {
+  font-weight: 550;
+  letter-spacing: 0.004em;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+.toast {
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+}
+
+.modal-panel {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+}
+
+.error-alert { border-radius: var(--radius-sm); }
+
+/* Wider shell pages. `.container` stays at 1040px for the client-facing
+   pages, which cap themselves inline for readable line length; only the
+   dashboard and admin (inside .app-shell) need the extra width. */
+.container.app {
+  max-width: 1400px;
+  padding: 2rem clamp(1rem, 2.5vw, 2.5rem);
+}
+
+/* Colour-only transitions for inline links. Scoped to `a` so it cannot
+   clobber the richer `button` transition declared above. */
+a { transition: color var(--dur) var(--ease); }
+
+/* Anchor styled as a button (the <a> equivalent of `button`). */
+.btn-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 16px;
+  border: none;
+  border-radius: var(--radius);
+  background-color: var(--accent);
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 88%, #fff) 0%,
+    var(--accent) 52%,
+    var(--accent-dark) 100%
+  );
+  color: var(--on-accent);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-decoration: none;
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,0.16);
+  transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.btn-link:hover { transform: translateY(-1px); box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,0.16); }
+.btn-link:active { transform: translateY(0); box-shadow: var(--shadow-xs); }

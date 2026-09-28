@@ -1,23 +1,33 @@
+import Link from 'next/link';
+import BrandLogo from './components/BrandLogo';
+
 export default function NotFound() {
   return (
-    <div style={{
-      minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      flexDirection: 'column', gap: 14, padding: '2rem', textAlign: 'center',
-      fontFamily: 'system-ui, -apple-system, sans-serif',
-    }}>
-      <div style={{ fontSize: 40 }}>🔎</div>
-      <h1 style={{ fontSize: 24, margin: 0 }}>404</h1>
-      <h2 style={{ fontSize: 20, margin: 0 }}>Page not found</h2>
-      <p style={{ color: '#8a8580', maxWidth: 420, margin: 0, fontSize: 14 }}>
-        The page you&apos;re looking for doesn&apos;t exist or may have moved.
-      </p>
-      <a
-        href="/dashboard"
-        style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid #D8602A', background: '#D8602A', color: '#fff', textDecoration: 'none', fontSize: 14, marginTop: 6 }}
-      >
-        Back to dashboard
-      </a>
-    </div>
+    <main className="login-body">
+      <div className="login-card" style={{ width: 380, maxWidth: '100%' }}>
+        <BrandLogo className="login-logo" style={{ height: 56 }} width={200} height={56} />
+        <p
+          aria-hidden="true"
+          style={{
+            fontSize: 52,
+            lineHeight: 1,
+            fontWeight: 700,
+            letterSpacing: '-0.04em',
+            margin: '8px 0 0',
+            color: 'var(--accent)',
+            opacity: 0.22,
+          }}
+        >
+          404
+        </p>
+        <h1 style={{ margin: '0 0 6px', fontSize: 20 }}>Link not available</h1>
+        <p className="muted" style={{ fontSize: 14, margin: 0 }}>
+          This link is invalid, has expired, or the item is no longer shared.
+        </p>
+        <Link href="/" className="btn-link" style={{ marginTop: 22, width: '100%' }}>
+          Go to homepage
+        </Link>
+      </div>
+    </main>
   );
 }
- 

@@ -1,3 +1,4 @@
+import { notFound } from 'next/navigation';
 import { getSql } from '../../../lib/db';
 import { WA_NUMBER, FACEBOOK, INSTAGRAM, COMPANY_NAME, COMPANY_WEBSITE, COMPANY_EMAIL, PAYMENT_ACCOUNTS, PAYMENT_ACCOUNT_NAME } from '../../../lib/config';
 import { calculateInvoiceTotals } from '../../../lib/invoiceMath';
@@ -52,14 +53,7 @@ export default async function InvoicePage({ params }) {
     LIMIT 1
   `;
   const invoice = rows[0];
-  if (!invoice) {
-    return (
-      <main className="container" style={{ textAlign: 'center', paddingTop: '4rem' }}>
-        <h1>Invoice not found</h1>
-        <p className="muted">This invoice is invalid, unavailable, or no longer active.</p>
-      </main>
-    );
-  }
+  if (!invoice) notFound();
 
   const items = invoice.items || [];
   const totals = calculateInvoiceTotals(invoice);

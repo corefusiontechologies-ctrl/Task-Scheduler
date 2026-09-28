@@ -1,3 +1,4 @@
+import { notFound } from 'next/navigation';
 import { getSql } from '../../../lib/db';
 import { WA_NUMBER, FACEBOOK, INSTAGRAM } from '../../../lib/config';
 import BrandLogo from '../../components/BrandLogo';
@@ -44,14 +45,7 @@ export default async function ClientPage({ params }) {
     LIMIT 1
   `;
   const task = rows[0];
-  if (!task) {
-    return (
-      <main className="container" style={{ textAlign: 'center', paddingTop: '4rem' }}>
-        <h1>Link not found</h1>
-        <p className="muted">This link is invalid, unavailable, or no longer active.</p>
-      </main>
-    );
-  }
+  if (!task) notFound();
 
   const progress = STATUS_PROGRESS[task.status] || 5;
   const assigneeNames = (task.assignee_names || []).filter(Boolean);

@@ -1,3 +1,4 @@
+import { notFound } from 'next/navigation';
 import { getSql } from '../../../lib/db';
 import { WA_NUMBER, FACEBOOK, INSTAGRAM } from '../../../lib/config';
 import BrandLogo from '../../components/BrandLogo';
@@ -58,14 +59,7 @@ export default async function ClientPortalPage({ params }) {
     LIMIT 1
   `;
   const portal = portalRows[0];
-  if (!portal) {
-    return (
-      <main className="container" style={{ textAlign: 'center', paddingTop: '4rem' }}>
-        <h1>Link not found</h1>
-        <p className="muted">This link is invalid or no longer active.</p>
-      </main>
-    );
-  }
+  if (!portal) notFound();
 
   const tasks = await sql`
     SELECT task.id::text, task.title, task.status, task.start_date, task.due_date, task.notes,
