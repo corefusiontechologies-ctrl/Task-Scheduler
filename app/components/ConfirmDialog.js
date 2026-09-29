@@ -30,9 +30,11 @@ export function ConfirmProvider({ children }) {
     setError('');
   }, []);
 
-  const open = useCallback((kind, options) => {
+  const open = useCallback((kind, message, options) => {
     if (resolver.current) resolver.current(kind === 'prompt' ? null : false);
-    const config = typeof options === 'string' ? { message: options } : { ...options };
+    const config = typeof message === 'string'
+      ? { ...(options || {}), message }
+      : { ...(message || {}) };
     setValue(config.defaultValue === undefined || config.defaultValue === null ? '' : String(config.defaultValue));
     setError('');
     setRequest({
@@ -52,9 +54,9 @@ export function ConfirmProvider({ children }) {
     });
   }, []);
 
-  const confirm = useCallback(options => open('confirm', options), [open]);
+  const confirm = useCallback((message, options) => open('confirm', message, options), [open]);
 
-  const prompt = useCallback(options => open('prompt', options), [open]);
+  const prompt = useCallback((message, options) => open('prompt', message, options), [open]);
 
   const submit = useCallback(() => {
     if (!request) return;

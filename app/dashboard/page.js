@@ -277,6 +277,33 @@ export default function DashboardPage() {
   async function changeShareLink(kind, item, action) {
     const isTask = kind === 'task';
     const label = isTask ? `"${item.title}"` : `invoice ${item.invoice_number}`;
+    const regenerate = action === 'regenerate_share';
+    const question = regenerate
+      ? `Create a new share link for ${label}?`
+      : `Revoke the share link for ${label}?`;
+    const detail = regenerate
+      ? 'The current link stops working immediately and you will need to send the new link to your client.'
+      : 'The link stops working immediately. You can create a new one later.';
+    if (!(await confirm(question, { tone: regenerate ? 'neutral' : 'danger', detail }))) return;
+    try {
+      const response = await fetch(`/api/${isTask ? 'tasks' : 'invoices'}/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, expected: item.updated_at }),
+      });
+      await readApiResponse(response);
+      toast.success(regenerate
+        ? `New share link created for ${label} - send it to your client.`
+        : `Share link revoked for ${label}.`);
+      await loadAll();
+    } catch (error) {
+      toast.error(error.message);
+    }
+  }
+
+  async function changeShareLink(kind, item, action) {
+    const isTask = kind === 'task';
+    const label = isTask ? `"${item.title}"` : `invoice ${item.invoice_number}`;
     if (action === 'regenerate_share') {
       const detail = isTask
         ? 'The current link will stop working and a new one will be created. You will need to send the new link to your client.'
@@ -544,7 +571,7 @@ export default function DashboardPage() {
           <>
             {tab==='list' && (
               <ListView tasks={tasks} invoices={invoices} team={team} categories={categories}
-                onAdd={openNewForm} onEdit={openEditForm} onDelete={deleteTask} onCopy={copyLink} copied={copied}
+                onAdd={openNewForm} onEdit={openEditForm} onDelete={deleteTask} onCopy={copyLink} onShareChange={changeShareLink} copied={copied}
                  isSuperAdmin={isSuperAdmin} userId={userId} perms={perms}
                  onBulkStatusChange={bulkUpdateStatus} onBulkTrash={bulkTrash} />
             )}
@@ -574,6 +601,7 @@ export default function DashboardPage() {
                 onDelete={deleteInvoice}
       onStatusChange={updateInvoiceStatus}
       onCopyInvoice={copyInvoiceLink}
+      onShareChange={changeShareLink}
     />
             )}
             {tab==='trash' && (
@@ -655,7 +683,7 @@ const DUE_FILTERS = {
   none:     { label: 'No due date',   test: (d) => d === null },
 };
 
-function ListView({ tasks, invoices, team, categories, onAdd, onEdit, onDelete, onCopy, copied, isSuperAdmin, userId, perms, onBulkStatusChange, onBulkTrash }) {
+function ListView({ tasks, invoices, team, categories, onAdd, onEdit, onDelete, onCopy, onShareChange, copied, isSuperAdmin, userId, perms, onBulkStatusChange, onBulkTrash }) {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterAssignee, setFilterAssignee] = useState('all');
@@ -836,15 +864,38 @@ function ListView({ tasks, invoices, team, categories, onAdd, onEdit, onDelete, 
                   <span style={{marginLeft:6,padding:'1px 7px',borderRadius:10,fontSize:11,fontWeight:600,background:'#fdecea',color:'#c0392b'}}>Unpaid</span>
                 )}
               </p>
-              {canCopy && t.share_token && (
-                <div className="share-link" style={{marginTop:8, maxWidth:400}}>
-                  <span style={{flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
-                    /client/{t.share_token}
-                  </span>
-                  <button className="secondary" style={{padding:'4px 10px', whiteSpace:'nowrap'}}
-                    onClick={() => onCopy(t.share_token)}>
-                    {copied === t.share_token ? '✓ Copied' : 'Copy link'}
-                  </button>
+              {canCopy && t.client_visible && (
+                <div className="share-link" style={{marginTop:8, maxWidth:400, flexWrap:'wrap'}}>
+                  {t.share_token ? (
+                    <>
+                      <span style={{flex:1, minWidth:120, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                        /client/{t.share_token}
+                      </span>
+                      <button className="secondary" style={{padding:'4px 10px', whiteSpace:'nowrap'}}
+                        onClick={() => onCopy(t.share_token)}>
+                        {copied === t.share_token ? '✓ Copied' : 'Copy link'}
+                      </button>
+                      <button className="secondary" style={{padding:'4px 10px', whiteSpace:'nowrap'}}
+                        onClick={() => onShareChange('task', t, 'regenerate_share')}>
+                        New link
+                      </button>
+                      <button className="secondary" style={{padding:'4px 10px', whiteSpace:'nowrap'}}
+                        title="Stop this link working immediately"
+                        onClick={() => onShareChange('task', t, 'revoke_share')}>
+                        Revoke
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="muted" style={{flex:1, fontSize:13}}>
+                        No active share link - this task is not reachable by clients.
+                      </span>
+                      <button className="secondary" style={{padding:'4px 10px', whiteSpace:'nowrap'}}
+                        onClick={() => onShareChange('task', t, 'regenerate_share')}>
+                        Create link
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -1537,7 +1588,7 @@ function nextInvoiceNumber(invoices) {
 }
 
 // ── Invoice list ────────────────────────────────────────────────────
-function InvoiceList({ invoices, origin, userId, canCreate, canEdit, canEditOwn, canManage, canDelete, canRecordPayments, onAdd, onEdit, onDelete, onStatusChange, onCopyInvoice }) {
+function InvoiceList({ invoices, origin, userId, canCreate, canEdit, canEditOwn, canManage, canDelete, canRecordPayments, onAdd, onEdit, onDelete, onStatusChange, onCopyInvoice, onShareChange }) {
   // Group totals by currency since invoices can be issued in different currencies
   const outstandingByCcy = {};
   const paidThisMonthByCcy = {};
@@ -1602,10 +1653,27 @@ function InvoiceList({ invoices, origin, userId, canCreate, canEdit, canEditOwn,
               <p className="muted" style={{margin:'4px 0 0',fontSize:13}}>
                 {inv.project_name && `${inv.project_name} · `}Due {fmt(inv.due_date)} · <strong style={{color:'var(--ink)'}}>{currencySymbol(inv.currency)}{money(total)}</strong>
               </p>
-              <div className="share-link" style={{marginTop:8,maxWidth:420}}>
-                <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>/invoice/{inv.share_token}</span>
-                <button className="secondary" style={{padding:'4px 10px',whiteSpace:'nowrap'}}
-                  onClick={() => onCopyInvoice(inv)}>Copy link</button>
+              <div className="share-link" style={{marginTop:8,maxWidth:420,flexWrap:'wrap'}}>
+                {inv.share_token ? (
+                  <>
+                    <span style={{flex:1,minWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>/invoice/{inv.share_token}</span>
+                    <button className="secondary" style={{padding:'4px 10px',whiteSpace:'nowrap'}}
+                      onClick={() => onCopyInvoice(inv)}>Copy link</button>
+                    <button className="secondary" style={{padding:'4px 10px',whiteSpace:'nowrap'}}
+                      onClick={() => onShareChange('invoice', inv, 'regenerate_share')}>New link</button>
+                    <button className="secondary" style={{padding:'4px 10px',whiteSpace:'nowrap'}}
+                      title="Stop this link working immediately"
+                      onClick={() => onShareChange('invoice', inv, 'revoke_share')}>Revoke</button>
+                  </>
+                ) : (
+                  <>
+                    <span className="muted" style={{flex:1,fontSize:13}}>
+                      No active share link - this invoice is not reachable by clients.
+                    </span>
+                    <button className="secondary" style={{padding:'4px 10px',whiteSpace:'nowrap'}}
+                      onClick={() => onShareChange('invoice', inv, 'regenerate_share')}>Create link</button>
+                  </>
+                )}
               </div>
             </div>
             <div style={{display:'flex',flexDirection:'column',gap:6,flexShrink:0}}>
