@@ -162,6 +162,35 @@ export const PATCH = withApi(async (request, { params }) => {
     `;
     return NextResponse.json(restored);
   }
+  if (body.action === 'regenerate_share' || body.action === 'revoke_share') {
+    if (current.archived_at) throw new ApiError(409, 'Restore this invoice before changing its share link');
+    if (!canEditInvoice(session, current)) throw new ApiError(403, 'Invoice editing access is required');
+    const regenerate = body.action === 'regenerate_share';
+    if (regenerate && !current.client_visible) {
+      throw new ApiError(400, 'Turn on client visibility before sharing this invoice');
+    }
+    const token = regenerate ? genToken() : null;
+    const [shared] = await getSql()`
+      UPDATE invoices
+      SET share_token = ${token}, updated_at = NOW()
+      WHERE id = ${current.id}
+        AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', ${expected}::timestamptz)
+        AND archived_at IS NULL
+      RETURNING id::text, invoice_number, share_token, client_visible, updated_at
+    `;
+    if (!shared) throw new ApiError(409, 'Invoice changed since it was loaded');
+    await getSql()`
+      INSERT INTO task_activity (user_id, username, actor, action, details)
+      VALUES (${session.id}::integer, ${session.username}, ${session.username},
+        ${regenerate ? 'invoice_share_regenerated' : 'invoice_share_revoked'},
+        ${JSON.stringify({
+          invoice_id: current.id,
+          invoice_number: current.invoice_number,
+          note: regenerate ? 'previous link no longer works' : 'client link no longer works',
+        })})
+    `;
+    return NextResponse.json(shared);
+  }
   if (!can(session, 'record_payments')) throw new ApiError(403, 'Payment recording access is required');
   if (current.archived_at) throw new ApiError(404, 'Invoice not found');
   if (!canEditInvoice(session, current)) throw new ApiError(403, 'Invoice editing access is required');

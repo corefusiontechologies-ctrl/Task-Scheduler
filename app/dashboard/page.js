@@ -274,6 +274,41 @@ export default function DashboardPage() {
     }
   }
 
+  async function changeShareLink(kind, item, action) {
+    const isTask = kind === 'task';
+    const label = isTask ? `"${item.title}"` : `invoice ${item.invoice_number}`;
+    if (action === 'regenerate_share') {
+      const detail = isTask
+        ? 'The current link will stop working and a new one will be created. You will need to send the new link to your client.'
+        : 'The current link will stop working and a new one will be created. You will need to send the new link to your client.';
+      if (!(await confirm(`Regenerate the share link for ${label}?`, { detail }))) return;
+    } else {
+      if (!(await confirm(`Revoke the share link for ${label}?`, {
+        tone: 'danger',
+        detail: 'The link will stop working immediately. You can create a new one at any time.',
+      }))) return;
+    }
+    try {
+      const response = await fetch(`/api/${isTask ? 'tasks' : 'invoices'}/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, expected: item.updated_at }),
+      });
+      await readApiResponse(response);
+      toast.success(
+        action === 'regenerate_share'
+          ? `New share link created for ${label}.`
+          : `Share link revoked for ${label}.`,
+        action === 'regenerate_share'
+          ? 'The previous link no longer works - send the new one to your client.'
+          : undefined,
+      );
+      await loadAll();
+    } catch (error) {
+      toast.error(error.message);
+    }
+  }
+
   async function saveInvoice(form) {
     const { id, updated_at, ...values } = form;
     const payload = { ...values, items: form.items };

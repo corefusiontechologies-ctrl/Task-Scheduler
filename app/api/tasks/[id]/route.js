@@ -65,6 +65,38 @@ async function canEditTask(session, task) {
   return (task.assignee_ids || []).map(Number).includes(Number(memberId));
 }
 
+async function changeTaskShare(session, id, action, expected) {
+  const current = await findTask(id);
+  if (!current) throw new ApiError(404, 'Task not found');
+  if (current.archived_at) throw new ApiError(409, 'Restore this task before changing its share link');
+  if (!(await canEditTask(session, current))) throw new ApiError(403, 'Task editing access is required');
+  const regenerate = action === 'regenerate_share';
+  if (regenerate && !current.client_visible) {
+    throw new ApiError(400, 'Turn on client visibility before sharing this task');
+  }
+  const token = regenerate ? genToken() : null;
+  const [shared] = await getSql()`
+    UPDATE tasks
+    SET share_token = ${token}, updated_at = NOW()
+    WHERE id = ${current.id}
+      AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', ${expected}::timestamptz)
+      AND archived_at IS NULL
+    RETURNING id::text, title, title AS task_title, share_token, client_visible, updated_at
+  `;
+  if (!shared) throw new ApiError(409, 'Task changed since it was loaded');
+  await getSql()`
+    INSERT INTO task_activity (task_id, user_id, username, actor, action, details)
+    VALUES (
+      ${current.id}, ${session.id}::integer, ${session.username}, ${session.username},
+      ${regenerate ? 'share_regenerated' : 'share_revoked'},
+      ${regenerate
+        ? 'Share link regenerated - the previous link no longer works'
+        : 'Share link revoked - the client link no longer works'}
+    )
+  `;
+  return shared;
+}
+
 export const GET = withApi(async (request, { params }) => {
   const session = await getFreshSession();
   if (!session) throw new ApiError(401, 'Authentication required');
@@ -237,6 +269,11 @@ export const PATCH = withApi(async (request, { params }) => {
       VALUES (${current.id}, ${session.id}::integer, ${session.username}, ${session.username}, 'restored', 'Task restored from trash')
     `;
     return NextResponse.json(restored);
+  }
+
+  if (body.action === 'regenerate_share' || body.action === 'revoke_share') {
+    const shared = await changeTaskShare(session, id, body.action, expected);
+    return NextResponse.json(shared);
   }
 
   const current = await findTask(id);
