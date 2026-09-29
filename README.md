@@ -48,6 +48,28 @@ Both reminder routes return **503 and do nothing** if either variable is missing
 variables are set but Resend rejects them (unverified sender, revoked key), the job still runs
 and each failure is recorded in `reminder_deliveries` with the Resend error message.
 
+### Testing the email integration
+
+Because a misconfigured sender fails silently in a cron job, there is a guarded diagnostic
+endpoint. It requires `CRON_SECRET` and **refuses to send in production** unless
+`ALLOW_TEST_EMAIL=1` is set deliberately.
+
+```powershell
+# status only - safe, sends nothing
+curl http://localhost:3000/api/test-email -H "Authorization: Bearer $env:CRON_SECRET"
+
+# actually send one message
+curl -X POST "http://localhost:3000/api/test-email?to=you@example.com" `
+     -H "Authorization: Bearer $env:CRON_SECRET"
+```
+
+`GET` reports which variables are missing and whether sending is currently permitted. `POST`
+sends one real message and returns Resend's own error text on failure, so a bad key or an
+unverified sender is visible immediately instead of being discovered by a client.
+
+Note that a Resend account with no verified domain can only send to the account owner's own
+address. Client-facing reminders and invoices require a domain you control.
+
 ## Daily reminders cron (optional)
 
 Vercel runs `/api/cron/task-reminders` at 03:00 UTC and `/api/cron/invoice-reminders` at 04:00 UTC. The jobs enqueue due-soon and overdue messages in the business timezone, claim deliveries safely, and retry failed sends.
@@ -99,6 +121,10 @@ is enforced server-side from the session's permission list, not from those colum
 3. Push to GitHub, import to Vercel, and add Neon Postgres under **Storage**.
 4. Set the environment variables above, including `APP_URL` and `CRON_SECRET`.
 5. Deploy and verify the migration, login, task, invoice, and reminder flows.
+
+`npm run build` now runs `npm run db:migrate` first via a `prebuild` hook, so Vercel applies
+migrations on deploy. The script is idempotent - it records applied migrations in
+`app_migrations` and skips them afterwards - so re-running it is safe.
 
 The migration is idempotent for normal schema work, with one exception: on the **first** run
 against a database it replaces every existing `share_token` on tasks, invoices, and client

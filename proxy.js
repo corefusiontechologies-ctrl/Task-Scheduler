@@ -5,6 +5,8 @@ import { checkPublicRateLimit } from './lib/publicRateLimit';
 // Public, unauthenticated pages worth throttling. `/` and `/login` are
 // deliberately excluded: the login form has its own persistent limiter, and
 // throttling the landing page would only block real users from reading it.
+// The share-token pages are throttled too - they are the widest public
+// surface, since anyone holding a link can load them.
 const RATE_LIMITED_PATHS = new Set(['/availability']);
 
 const PUBLIC_PATHS = new Set(['/', '/login', '/api/login', '/api/logout', '/availability', '/favicon.ico', '/manifest.webmanifest', '/robots.txt', '/sitemap.xml']);
@@ -64,7 +66,9 @@ function unauthorized(request) {
 export async function proxy(request) {
   const pathname = request.nextUrl.pathname;
   if (isPublicPath(pathname)) {
-    if (RATE_LIMITED_PATHS.has(pathname)) {
+    const rateLimited = RATE_LIMITED_PATHS.has(pathname)
+      || PUBLIC_TOKEN_ROUTES.some(pattern => pattern.test(pathname));
+    if (rateLimited) {
       const result = checkPublicRateLimit(request);
       if (result.limited) return tooManyRequests(result);
     }
@@ -82,6 +86,9 @@ export async function proxy(request) {
   return NextResponse.next();
 }
 
+// `api/cron` and `api/test-email` bypass the session gate: they are not
+// user-facing routes, and are guarded by CRON_SECRET (plus a production
+// block on test-email) instead. Everything else requires a signed session.
 export const config = {
-  matcher: ['/((?!api/cron|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)'],
+  matcher: ['/((?!api/cron|api/test-email|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)'],
 };
