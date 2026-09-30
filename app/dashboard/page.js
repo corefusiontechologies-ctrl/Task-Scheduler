@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { calcInvoiceTotal } from '@/lib/invoiceMath';
 import { safeCsvCell } from '@/lib/csv';
@@ -98,6 +98,7 @@ export default function DashboardPage() {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const [dark, toggleDark] = useDarkMode();
   const [copied, setCopied] = useState(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [userId, setUserId] = useState('');
   const [perms, setPerms] = useState({});
@@ -236,6 +237,41 @@ export default function DashboardPage() {
     }
     toast.success(`${updates.length} task${updates.length>1?'s':''} set to ${STATUS_LABELS[status]}.`);
     loadAll();
+  }
+
+  // ── Board: move a single task between status columns ──────────────
+  // Optimistic: the card moves immediately and rolls back if the
+  // server rejects it (stale updated_at, missing permission, ...).
+  async function moveTaskToStatus(task, status) {
+    if (!task || task.status === status) return;
+    const previous = task.status;
+    const previousProgress = task.progress;
+    setTasks(items => items.map(item => item.id === task.id
+      ? { ...item, status, progress: status === 'done' ? 100 : item.progress }
+      : item));
+    try {
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status,
+          progress: status === 'done' ? 100 : task.progress,
+          expected: task.updated_at,
+        }),
+      });
+      const updated = await readApiResponse(response);
+      setTasks(items => items.map(item => item.id === task.id
+        ? { ...item, ...(updated || {}), status, progress: status === 'done' ? 100 : item.progress }
+        : item));
+      toast.success(`"${task.title}" moved to ${STATUS_LABELS[status]}.`);
+    } catch (error) {
+      setTasks(items => items.map(item => item.id === task.id
+        ? { ...item, status: previous, progress: previousProgress }
+        : item));
+      toast.error(`Could not move "${task.title}". ${error.message}`, {
+        detail: 'The task was put back where it was.',
+      });
+    }
   }
 
   async function bulkTrash(ids) {
@@ -537,6 +573,7 @@ export default function DashboardPage() {
 
   const navItems = [
     { key: 'list', label: 'List', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> },
+    { key: 'board', label: 'Board', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="18" rx="1.5"/><rect x="14" y="3" width="7" height="11" rx="1.5"/></svg> },
     { key: 'activity', label: 'Activity', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
     { key: 'calendar', label: 'Calendar', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> },
   ];
@@ -550,12 +587,83 @@ export default function DashboardPage() {
     navItems.push({ key: 'trash', label: 'Trash', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg> });
   }
 
+  // ── Command palette ────────────────────────────────────────────────
+  const goToTab = key => {
+    setTab(key);
+    if (key === 'trash') loadTrash();
+    if (key === 'activity') loadActivity();
+  };
+
+  const commands = useMemo(() => {
+    const list = [];
+    if (isSuperAdmin || perms.perm_add_tasks) {
+      list.push({ id: 'act:new', group: 'Actions', label: 'New task', run: () => openNewForm() });
+    }
+    list.push(
+      { id: 'act:theme', group: 'Actions', label: dark ? 'Switch to light mode' : 'Switch to dark mode', run: () => toggleDark() },
+      { id: 'act:reload', group: 'Actions', label: 'Refresh data', run: () => loadAll() },
+    );
+    for (const item of navItems) {
+      list.push({ id: `go:${item.key}`, group: 'Go to', label: item.label, run: () => goToTab(item.key) });
+    }
+    if (isSuperAdmin) {
+      list.push({ id: 'go:admin', group: 'Go to', label: 'Admin', run: () => router.push('/admin') });
+    }
+    for (const task of tasks) {
+      list.push({
+        id: `task:${task.id}`,
+        group: 'Tasks',
+        label: task.title,
+        hint: [task.client_name, STATUS_LABELS[task.status]].filter(Boolean).join(' · '),
+        run: () => { setTab('list'); openEditForm(task); },
+      });
+    }
+    const seen = new Set();
+    for (const task of tasks) {
+      if (!task.client_name) continue;
+      const key = task.client_name.trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const name = task.client_name;
+      list.push({
+        id: `client:${key}`,
+        group: 'Clients',
+        label: name,
+        run: () => { setTab('clients'); },
+      });
+    }
+    return list;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, navItems, dark, isSuperAdmin, perms]);
+
+  // ⌘K / Ctrl+K opens the palette. 'n' starts a new task, but only when
+  // the user is not already typing into a field.
+  useEffect(() => {
+    const onKey = e => {
+      const mod = e.metaKey || e.ctrlKey;
+      const target = e.target;
+      const typing = target instanceof HTMLElement
+        && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
+      if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); setPaletteOpen(o => !o); return; }
+      if (typing || paletteOpen) return;
+      if (e.key === '/') { e.preventDefault(); setPaletteOpen(true); return; }
+      if (e.key.toLowerCase() === 'n' && (isSuperAdmin || perms.perm_add_tasks)) { e.preventDefault(); openNewForm(); }
+      // Plain digit keys switch views. Only the always-loaded views are
+      // reachable this way, so the lazy loaders are not needed here.
+      const jump = { 1: 'list', 2: 'board', 3: 'calendar' }[e.key];
+      if (jump && !mod) { e.preventDefault(); setTab(jump); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [paletteOpen, isSuperAdmin, perms]);
+
   return (
     <div className="app-shell">
       <Sidebar
         items={navItems}
         activeKey={tab}
-        onSelect={(key) => { setTab(key); if (key === 'trash') loadTrash(); if (key === 'activity') loadActivity(); }}
+        onSelect={goToTab}
+        onSearch={() => setPaletteOpen(true)}
         dark={dark}
         onToggleDark={toggleDark}
         onSignOut={handleLogout}
@@ -574,6 +682,11 @@ export default function DashboardPage() {
                 onAdd={openNewForm} onEdit={openEditForm} onDelete={deleteTask} onCopy={copyLink} onShareChange={changeShareLink} copied={copied}
                  isSuperAdmin={isSuperAdmin} userId={userId} perms={perms}
                  onBulkStatusChange={bulkUpdateStatus} onBulkTrash={bulkTrash} />
+            )}
+            {tab==='board' && (
+              <BoardView tasks={tasks} onMove={moveTaskToStatus} onEdit={openEditForm}
+                canDrag={isSuperAdmin || !!perms.perm_edit_tasks || !!perms.perm_edit_own_tasks}
+                onAdd={(isSuperAdmin || perms.perm_add_tasks) ? openNewForm : null} />
             )}
             {tab==='activity' && (
               <ActivityView items={activityItems} loading={loadingActivity}
@@ -599,10 +712,10 @@ export default function DashboardPage() {
                 onAdd={()=>{setEditingInvoice(null);setShowInvoiceForm(true);}}
                 onEdit={(inv)=>{setEditingInvoice(inv);setShowInvoiceForm(true);}}
                 onDelete={deleteInvoice}
-      onStatusChange={updateInvoiceStatus}
-      onCopyInvoice={copyInvoiceLink}
-      onShareChange={changeShareLink}
-    />
+                onStatusChange={updateInvoiceStatus}
+                onCopyInvoice={copyInvoiceLink}
+                onShareChange={changeShareLink}
+              />
             )}
             {tab==='trash' && (
               <TrashView
@@ -628,6 +741,14 @@ export default function DashboardPage() {
             clientNames={[...new Set([...tasks.map(t=>t.client_name), ...invoices.map(i=>i.client_name)].filter(Boolean))].sort()}
             onSave={saveInvoice} onCancel={()=>{setShowInvoiceForm(false);setEditingInvoice(null);}} />
         )}
+
+        {paletteOpen && (
+          <CommandPalette
+            onClose={() => setPaletteOpen(false)}
+            onNavigate={item => item.run()}
+            commands={commands}
+          />
+        )}
       </div>
       </div>
     </div>
@@ -648,12 +769,12 @@ function DueBadge({ dueDate, status }) {
   const diff = daysUntil(dueDate);
   if (diff === null) return null;
   if (diff < 0) return (
-    <span style={{marginLeft:6,padding:'1px 7px',borderRadius:10,fontSize:11,fontWeight:600,background:'#fdecea',color:'#c0392b'}}>
+    <span className="badge sm red">
       Overdue {Math.abs(diff)}d
     </span>
   );
   if (diff <= 3) return (
-    <span style={{marginLeft:6,padding:'1px 7px',borderRadius:10,fontSize:11,fontWeight:600,background:'#fff8e1',color:'#B5790F'}}>
+    <span className="badge sm amber">
       Due {diff===0?'today':diff===1?'tomorrow':`in ${diff}d`}
     </span>
   );
@@ -666,10 +787,19 @@ function PriorityBadge({ priority }) {
   const isUrgent = normalized === 'urgent';
   const isHigh = normalized === 'high';
   return (
-    <span style={{marginLeft:6,padding:'1px 8px',borderRadius:10,fontSize:11,fontWeight:700,
-      background: isUrgent ? '#fdecea' : '#fff4e0',
-      color: isUrgent ? '#c0392b' : '#B5790F'}}>
+    <span className={`badge sm ${isUrgent ? 'red' : 'amber'}`}>
       {isUrgent ? 'Urgent' : isHigh ? 'High' : 'Low'}
+    </span>
+  );
+}
+
+// Matches the board column dots so list and board read as one system.
+function StatusPill({ status }) {
+  if (!status) return null;
+  return (
+    <span className="status-pill">
+      <span className="board-dot" data-status={status} aria-hidden="true" />
+      {STATUS_LABELS[status] || status}
     </span>
   );
 }
@@ -742,8 +872,8 @@ function ListView({ tasks, invoices, team, categories, onAdd, onEdit, onDelete, 
         {[
           ['Active tasks', active.length, 'var(--in_progress)'],
           ['Due this week', dueThisWeek, 'var(--review)'],
-          ['Overdue', overdueCount, '#c0392b'],
-          ['Unpaid invoices', unpaidInvoices, '#B5790F'],
+          ['Overdue', overdueCount, 'var(--red-fg)'],
+          ['Unpaid invoices', unpaidInvoices, 'var(--amber-fg)'],
         ].map(([label,val,color]) => (
           <div key={label} style={{flex:'1 1 120px',background:'var(--accent-soft)',borderRadius:10,padding:'10px 14px'}}>
             <div style={{fontSize:20,fontWeight:800,color}}>{val}</div>
@@ -838,10 +968,7 @@ function ListView({ tasks, invoices, team, categories, onAdd, onEdit, onDelete, 
             <div style={{flex:1, minWidth:0}}>
               <div style={{display:'flex', alignItems:'center', gap:8, flexWrap:'wrap'}}>
                 <strong style={{fontSize:15}}>{t.task_title}</strong>
-                <span className="badge" style={{background:`var(--accent-soft)`, color:`var(--${t.status})`}}>
-                  <span className="dot" style={{background:`var(--${t.status})`}}></span>
-                  {STATUS_LABELS[t.status]}
-                </span>
+                <StatusPill status={t.status} />
                 {t.category_name && (
                   <span style={{fontSize:11,padding:'2px 8px',borderRadius:10,background:t.category_color||'#ccc',color:'#fff',fontWeight:600}}>
                     {t.category_name}
@@ -854,14 +981,12 @@ function ListView({ tasks, invoices, team, categories, onAdd, onEdit, onDelete, 
                 {t.client_name} · {fmt(t.start_date)} → {fmt(t.due_date)}
                 {assigneeLabel(t) ? ` · ${assigneeLabel(t)}` : ''}
                 {t.payment_status && t.payment_status !== 'unpaid' && (
-                  <span style={{marginLeft:6,padding:'1px 7px',borderRadius:10,fontSize:11,fontWeight:600,
-                    background: t.payment_status==='paid'?'#e8f5e9':'#fff8e1',
-                    color: t.payment_status==='paid'?'#2e7d32':'#B5790F'}}>
+                  <span className={`badge sm ${t.payment_status === 'paid' ? 'green' : 'amber'}`}>
                     {TASK_PAYMENT_LABELS[t.payment_status] || t.payment_status}
                   </span>
                 )}
                 {(!t.payment_status || t.payment_status==='unpaid') && (
-                  <span style={{marginLeft:6,padding:'1px 7px',borderRadius:10,fontSize:11,fontWeight:600,background:'#fdecea',color:'#c0392b'}}>Unpaid</span>
+                  <span className="badge sm red">Unpaid</span>
                 )}
               </p>
               {canCopy && t.client_visible && (
@@ -909,6 +1034,235 @@ function ListView({ tasks, invoices, team, categories, onAdd, onEdit, onDelete, 
               }
             </div>
           </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Command palette (⌘K / Ctrl+K) ───────────────────────────────────
+const CommandPalette = ({ onClose, onNavigate, commands }) => {
+  const [query, setQuery] = useState('');
+  const [cursor, setCursor] = useState(0);
+  const inputRef = useRef(null);
+  const listRef = useRef(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const results = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return commands.slice(0, 8);
+    const scored = [];
+    for (const item of commands) {
+      const hay = `${item.group} ${item.label} ${item.hint || ''}`.toLowerCase();
+      const at = hay.indexOf(q);
+      if (at === -1) continue;
+      // Prefix and word-start matches rank above mid-string ones.
+      const score = hay.startsWith(q) ? 0 : /\s/.test(hay[at - 1] || ' ') ? 1 : 2;
+      scored.push({ item, score, at });
+    }
+    return scored.sort((a, b) => a.score - b.score || a.item.label.length - b.item.label.length)
+      .slice(0, 30)
+      .map(s => s.item);
+  }, [query, commands]);
+
+  // Clamp at read time so filtering can never leave the cursor out of range.
+  const active = results.length ? Math.min(cursor, results.length - 1) : 0;
+
+  useEffect(() => {
+    const onKey = e => {
+      if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
+      if (e.key === 'ArrowDown') { e.preventDefault(); setCursor(Math.min(active + 1, results.length - 1)); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setCursor(Math.max(active - 1, 0)); return; }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const picked = results[active];
+        if (picked) { onClose(); onNavigate(picked); }
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [results, active, onClose, onNavigate]);
+
+  // Keep the highlighted row inside the scroll viewport.
+  useEffect(() => {
+    listRef.current?.querySelector('.cmdk-item.active')
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [active, results]);
+
+  return (
+    <div className="cmdk-backdrop" onMouseDown={onClose}>
+      <div
+        className="cmdk-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
+        onMouseDown={e => e.stopPropagation()}
+      >
+        <input
+          ref={inputRef}
+          className="cmdk-input"
+          type="text"
+          value={query}
+          placeholder="Search tasks and clients, or jump to a view…"
+          aria-label="Search commands"
+          autoComplete="off"
+          spellCheck="false"
+          onChange={e => { setQuery(e.target.value); setCursor(0); }}
+        />
+
+        <div className="cmdk-results" ref={listRef} role="listbox" aria-label="Results">
+          {results.length === 0 && (
+            <p className="cmdk-empty">No matches for “{query.trim()}”.</p>
+          )}
+          {results.map((item, i) => (
+            <button
+              key={item.id}
+              type="button"
+              role="option"
+              aria-selected={i === active}
+              className={`cmdk-item${i === active ? ' active' : ''}`}
+              onMouseEnter={() => setCursor(i)}
+              onClick={() => { onClose(); onNavigate(item); }}
+            >
+              <span className="cmdk-item-label">{item.label}</span>
+              {item.hint && <span className="cmdk-item-hint">{item.hint}</span>}
+            </button>
+          ))}
+        </div>
+
+        <footer className="cmdk-foot">
+          <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+          <span><kbd>↵</kbd> open</span>
+          <span><kbd>esc</kbd> close</span>
+        </footer>
+      </div>
+    </div>
+  );
+};
+
+// ── Board view ──────────────────────────────────────────────────────
+const BOARD_COLUMNS = ['not_started', 'in_progress', 'review', 'done'];
+
+function BoardCard({ task, onMove, onEdit, canDrag, dragging, onDragStart, onDragEnd }) {
+  const due = daysUntil(task.due_date);
+  const overdue = task.status !== 'done' && due !== null && due < 0;
+  const assignee = assigneeLabel(task);
+
+  return (
+    <article
+      className={`board-card${dragging ? ' dragging' : ''}`}
+      draggable={canDrag}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      tabIndex={0}
+      role="button"
+      aria-label={`${task.title}, ${STATUS_LABELS[task.status]}. Press enter to edit.`}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEdit(task); }
+      }}
+      onClick={() => onEdit(task)}
+    >
+      <div className="board-card-top">
+        <span className="board-card-title">{task.title}</span>
+        {task.priority === 'high' && <span className="board-flag" title="High priority">!</span>}
+      </div>
+
+      <div className="board-card-meta">
+        {task.client_name && <span className="board-chip">{task.client_name}</span>}
+        {assignee && <span className="board-chip assignee" title={`Assigned to ${assignee}`}>{assignee}</span>}
+      </div>
+
+      <div className="board-card-foot">
+        {task.due_date && (
+          <span className={`board-due${overdue ? ' overdue' : ''}`}>
+            {overdue ? `${Math.abs(due)}d late` : due === 0 ? 'Due today' : due === 1 ? 'Due tomorrow' : fmt(task.due_date)}
+          </span>
+        )}
+        {task.status !== 'done' && Number(task.progress) > 0 && (
+          <span className="board-progress" title={`${task.progress}% complete`}>
+            <span className="board-progress-fill" style={{ width: `${Math.min(100, Number(task.progress))}%` }} />
+          </span>
+        )}
+        {task.status === 'done' && <span className="board-done-tick" aria-label="Complete">✓</span>}
+      </div>
+    </article>
+  );
+}
+
+function BoardView({ tasks, onMove, onEdit, canDrag, onAdd }) {
+  const [dragId, setDragId] = useState(null);
+  const [overColumn, setOverColumn] = useState(null);
+  const columns = useMemo(() => {
+    const map = {};
+    for (const key of BOARD_COLUMNS) map[key] = [];
+    for (const task of tasks) (map[task.status] || map.not_started).push(task);
+    return map;
+  }, [tasks]);
+
+  const dragging = dragId ? tasks.find(t => t.id === dragId) : null;
+
+  function drop(status) {
+    if (dragging) onMove(dragging, status);
+    setDragId(null);
+    setOverColumn(null);
+  }
+
+  if (!tasks.length) {
+    return (
+      <div className="card board-empty">
+        <strong style={{ fontSize: 16 }}>Nothing on the board yet</strong>
+        <p className="muted" style={{ fontSize: 13, marginTop: 6 }}>Create a task and it will appear here.</p>
+        {onAdd && <button className="primary" style={{ marginTop: 14 }} onClick={onAdd}>New task</button>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="board" role="list" aria-label="Task board">
+      {BOARD_COLUMNS.map(status => {
+        const items = columns[status];
+        const isOver = overColumn === status;
+        return (
+          <section
+            key={status}
+            className={`board-col${isOver && dragId ? ' over' : ''}`}
+            aria-label={STATUS_LABELS[status]}
+            onDragOver={e => { if (!dragId) return; e.preventDefault(); setOverColumn(status); }}
+            onDragLeave={e => {
+              if (!e.currentTarget.contains(e.relatedTarget)) setOverColumn(c => (c === status ? null : c));
+            }}
+            onDrop={e => { e.preventDefault(); drop(status); }}
+          >
+            <header className="board-col-head">
+              <span className="board-dot" data-status={status} aria-hidden="true" />
+              <span className="board-col-title">{STATUS_LABELS[status]}</span>
+              <span className="board-count">{items.length}</span>
+            </header>
+
+            <div className="board-col-body">
+              {items.length === 0 && <p className="board-col-empty">Drop here</p>}
+              {items.map(task => (
+                <BoardCard
+                  key={task.id}
+                  task={task}
+                  canDrag={canDrag}
+                  dragging={dragId === task.id}
+                  onDragStart={e => {
+                    setDragId(task.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                    // Firefox refuses to start a drag without payload.
+                    try { e.dataTransfer.setData('text/plain', String(task.id)); } catch { /* ignore */ }
+                  }}
+                  onDragEnd={() => { setDragId(null); setOverColumn(null); }}
+                  onMove={onMove}
+                  onEdit={onEdit}
+                />
+              ))}
+            </div>
+          </section>
         );
       })}
     </div>
@@ -1501,10 +1855,11 @@ function CalendarView({ tasks, monthOffset, setMonthOffset, onAdd, onEdit, canAd
 }
 
 // ── Invoice helpers ─────────────────────────────────────────────────
+// Tones come from tokens so these read correctly in dark mode.
 const PS_STYLES = {
-  unpaid:         { label:'Unpaid',         bg:'#fdecea', color:'#c0392b' },
-  partially_paid: { label:'Partially Paid', bg:'#fff8e1', color:'#B5790F' },
-  paid:           { label:'Paid',           bg:'#e8f5e9', color:'#2e7d32' },
+  unpaid:         { label:'Unpaid',         bg:'var(--red-bg)',   color:'var(--red-fg)' },
+  partially_paid: { label:'Partially Paid', bg:'var(--amber-bg)', color:'var(--amber-fg)' },
+  paid:           { label:'Paid',           bg:'var(--green-bg)', color:'var(--green-fg)' },
 };
 
 function money(n) {
@@ -1620,11 +1975,11 @@ function InvoiceList({ invoices, origin, userId, canCreate, canEdit, canEditOwn,
       {/* Totals summary */}
       <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:16}}>
         <div style={{flex:'1 1 180px',background:'var(--accent-soft)',borderRadius:10,padding:'10px 14px'}}>
-          <div style={{fontSize:18,fontWeight:800,color:'#c0392b'}}>{fmtByCcy(outstandingByCcy)}</div>
+          <div style={{fontSize:18,fontWeight:800,color:'var(--red-fg)'}}>{fmtByCcy(outstandingByCcy)}</div>
           <div className="muted" style={{fontSize:12}}>Total outstanding</div>
         </div>
         <div style={{flex:'1 1 180px',background:'var(--accent-soft)',borderRadius:10,padding:'10px 14px'}}>
-          <div style={{fontSize:18,fontWeight:800,color:'#2e7d32'}}>{fmtByCcy(paidThisMonthByCcy)}</div>
+          <div style={{fontSize:18,fontWeight:800,color:'var(--green-fg)'}}>{fmtByCcy(paidThisMonthByCcy)}</div>
           <div className="muted" style={{fontSize:12}}>Paid this month</div>
         </div>
       </div>

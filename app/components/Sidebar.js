@@ -31,6 +31,12 @@ function LinkIcon() {
   );
 }
 
+function SearchIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.65" y2="16.65"/></svg>
+  );
+}
+
 function subscribeSidebar(callback) {
   window.addEventListener('storage', callback);
   window.addEventListener('cft-sidebar-change', callback);
@@ -62,7 +68,7 @@ function getSidebarServerSnapshot() {
  * On desktop it can be collapsed to an icon-only rail via the chevron toggle;
  * the collapsed state is remembered across visits.
  */
-export default function Sidebar({ items, activeKey, onSelect, badgeText, extraLink, dark, onToggleDark, onSignOut }) {
+export default function Sidebar({ items, activeKey, onSelect, badgeText, extraLink, dark, onToggleDark, onSignOut, onSearch }) {
   const [open, setOpen] = useState(false);
   const collapsed = useSyncExternalStore(subscribeSidebar, getSidebarSnapshot, getSidebarServerSnapshot);
 
@@ -118,6 +124,13 @@ export default function Sidebar({ items, activeKey, onSelect, badgeText, extraLi
         </div>
 
         <nav className="sidebar-nav">
+          {onSearch && (
+            <button className="sidebar-search" onClick={onSearch} title="Search (Ctrl+K)">
+              <span className="sidebar-nav-icon"><SearchIcon /></span>
+              <span className="sidebar-nav-label">Search</span>
+              <kbd className="sidebar-search-kbd">⌘K</kbd>
+            </button>
+          )}
           {items.map(item => (
             <button
               key={item.key}
