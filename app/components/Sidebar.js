@@ -31,12 +31,6 @@ function LinkIcon() {
   );
 }
 
-function SearchIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.65" y2="16.65"/></svg>
-  );
-}
-
 function subscribeSidebar(callback) {
   window.addEventListener('storage', callback);
   window.addEventListener('cft-sidebar-change', callback);
@@ -68,7 +62,11 @@ function getSidebarServerSnapshot() {
  * On desktop it can be collapsed to an icon-only rail via the chevron toggle;
  * the collapsed state is remembered across visits.
  */
-export default function Sidebar({ items, activeKey, onSelect, badgeText, extraLink, dark, onToggleDark, onSignOut, onSearch }) {
+export default function Sidebar({ items, groups, activeKey, onSelect, badgeText, extraLink, dark, onToggleDark, onSignOut, displayName }) {
+  // Grouped navigation when provided, otherwise a single flat list.
+  const navSections = groups && groups.length
+    ? groups
+    : [{ label: '', items: items || [] }];
   const [open, setOpen] = useState(false);
   const collapsed = useSyncExternalStore(subscribeSidebar, getSidebarSnapshot, getSidebarServerSnapshot);
 
@@ -124,26 +122,36 @@ export default function Sidebar({ items, activeKey, onSelect, badgeText, extraLi
         </div>
 
         <nav className="sidebar-nav">
-          {onSearch && (
-            <button className="sidebar-search" onClick={onSearch} title="Search (Ctrl+K)">
-              <span className="sidebar-nav-icon"><SearchIcon /></span>
-              <span className="sidebar-nav-label">Search</span>
-              <kbd className="sidebar-search-kbd">⌘K</kbd>
-            </button>
-          )}
-          {items.map(item => (
-            <button
-              key={item.key}
-              className={activeKey === item.key ? 'active' : ''}
-              onClick={() => selectItem(item.key)}
-              title={collapsed ? item.label : undefined}
-            >
-              {item.icon && <span className="sidebar-nav-icon">{item.icon}</span>}
-              <span className="sidebar-nav-label">{item.label}</span>
-              {item.badge ? <span className="sidebar-nav-badge">{item.badge}</span> : null}
-            </button>
+          {navSections.map((group, gi) => (
+            <div className="sidebar-nav-group" key={group.label || gi}>
+              {group.label && !collapsed && (
+                <div className="sidebar-nav-heading">{group.label}</div>
+              )}
+              {group.label && collapsed && <div className="sidebar-nav-rule" />}
+              {group.items.map(item => (
+                <button
+                  key={item.key}
+                  className={activeKey === item.key ? 'active' : ''}
+                  onClick={() => selectItem(item.key)}
+                  title={collapsed ? item.label : undefined}
+                >
+                  {item.icon && <span className="sidebar-nav-icon">{item.icon}</span>}
+                  <span className="sidebar-nav-label">{item.label}</span>
+                  {item.badge ? <span className="sidebar-nav-badge">{item.badge}</span> : null}
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
+
+        {displayName && !collapsed && (
+          <div className="sidebar-profile">
+            <span className="sidebar-profile-avatar" aria-hidden="true">
+              {displayName.trim().charAt(0).toUpperCase()}
+            </span>
+            <span className="sidebar-profile-name">{displayName}</span>
+          </div>
+        )}
 
         <div className="sidebar-footer">
           {extraLink && (

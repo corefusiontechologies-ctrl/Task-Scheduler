@@ -1,83 +1,109 @@
 /* ── Light mode tokens ── */
 :root {
-  --accent:      #B84F24;
-  --accent-dark: #963B18;
+  /* Blue primary accent. */
+  --accent:      #2563EB;
+  --accent-dark: #1D4ED8;
   --on-accent:   #FFFFFF;
-  --accent-soft: #F9EDE5;
-  --ink:         #1A1816;
-  --ink-soft:    #6B6760;
-  --line:        #E4DED5;
-  --bg:          #F3EEE6;
+  --accent-soft: #EFF6FF;
+  --ink:         #0F172A;
+  --ink-soft:    #64748B;
+  --line:        #E2E8F0;
+  --bg:          #F8FAFC;
   --card:        #FFFFFF;
   --topbar-bg:   #FFFFFF;
   --input-bg:    #FFFFFF;
-  --share-bg:    #F7F2EA;
-  --hover-sec:   #F1ECE3;
-  --not_started: #9B9690;
-  --in_progress: #2E7BC4;
-  --review:      #B5790F;
-  --done:        #4F8A22;
-  --today-ring:  #D8602A;
-  --cal-today:   #FEF3ED;
-  --cal-has-task:#F4F0E9;
-  --avail-busy-bg: #F5E3DC;
-  --avail-busy-fg: #A8451C;
-  --avail-free-bg: #E6F2DC;
-  --avail-free-fg: #3B6D11;
+  --share-bg:    #F1F5F9;
+  --hover-sec:   #F1F5F9;
+
+  /* Task status colours. */
+  --not_started: #94A3B8;
+  --in_progress: #2563EB;
+  --review:      #D97706;
+  --done:        #16A34A;
+  --today-ring:  #2563EB;
+  --cal-today:   #EFF6FF;
+  --cal-has-task:#F1F5F9;
+  --avail-busy-bg: #FEE2E2;
+  --avail-busy-fg: #B91C1C;
+  --avail-free-bg: #DCFCE7;
+  --avail-free-fg: #15803D;
 
   /* Semantic alert tones for badges and flags. */
-  --red-bg:    #FDECEA;
-  --red-fg:    #C0392B;
-  --amber-bg:  #FFF4E0;
-  --amber-fg:  #B5790F;
-  --green-bg:  #E8F5E9;
-  --green-fg:  #2E7D32;
+  --red-bg:    #FEF2F2;
+  --red-fg:    #DC2626;
+  --amber-bg:  #FFFBEB;
+  --amber-fg:  #B45309;
+  --green-bg:  #F0FDF4;
+  --green-fg:  #15803D;
 
-  /* Standard flat-design elevation shadows (single-tone, no inset highlight). */
-  --shadow-xs: 0 1px 2px rgba(26,24,22,0.06);
-  --shadow-sm: 0 1px 3px rgba(26,24,22,0.08), 0 1px 2px rgba(26,24,22,0.04);
-  --shadow:    0 4px 14px rgba(26,24,22,0.08);
-  --shadow-lg: 0 12px 32px rgba(26,24,22,0.14);
+  /* Dark navy sidebar. Always navy in both themes, per the design brief,
+     so these live on :root and are deliberately NOT overridden in dark mode. */
+  --navy:        #0F172A;
+  --navy-2:      #1E293B;
+  --navy-3:      #334155;
+  --navy-line:   #1E293B;
+  --navy-ink:    #E2E8F0;
+  --navy-ink-2:  #94A3B8;
+  --navy-active: #1D4ED8;
+
+  /* Radii scale (brief asks for 10-14px on cards). */
+  --r-sm: 8px;
+  --r:    10px;
+  --r-lg: 14px;
+  --r-xl: 16px;
+
+  /* Soft, low-contrast elevation. */
+  --shadow-xs: 0 1px 2px rgba(15,23,42,0.05);
+  --shadow-sm: 0 1px 3px rgba(15,23,42,0.07), 0 1px 2px rgba(15,23,42,0.04);
+  --shadow:    0 4px 12px rgba(15,23,42,0.07);
+  --shadow-lg: 0 12px 28px rgba(15,23,42,0.12);
+  --dur: 0.16s;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ── Dark mode tokens ── */
 [data-theme="dark"] {
-  --accent:      #E8733D;
-  --accent-dark: #C85A2B;
-  --on-accent:   #171513;
-  --accent-soft: #3A1F10;
-  --ink:         #F0EDE8;
-  --ink-soft:    #9B9690;
-  --line:        #34312D;
-  --bg:          #171513;
-  --card:        #211E1B;
-  --topbar-bg:   #211E1B;
-  --input-bg:    #1B1917;
-  --share-bg:    #221F1C;
-  --hover-sec:   #2A2622;
-  --not_started: #7A7770;
-  --in_progress: #4A9BE0;
-  --review:      #D4960F;
-  --done:        #6AAE2C;
-  --today-ring:  #E8733D;
-  --cal-today:   #2A1A0E;
-  --cal-has-task:#201E1B;
-  --avail-busy-bg: #2A1208;
-  --avail-busy-fg: #E8733D;
-  --avail-free-bg: #0E2208;
-  --avail-free-fg: #7AC940;
+  --accent:      #3B82F6;
+  --accent-dark: #2563EB;
+  --on-accent:   #0B1220;
+  --accent-soft: #172554;
+  --ink:         #E2E8F0;
+  --ink-soft:    #94A3B8;
+  --line:        #273449;
+  --bg:          #0B1220;
+  --card:        #131C2E;
+  --topbar-bg:   #131C2E;
+  --input-bg:    #0F1727;
+  --share-bg:    #16203A;
+  --hover-sec:   #1C2740;
+  --not_started: #64748B;
+  --in_progress: #3B82F6;
+  --review:      #F59E0B;
+  --done:        #22C55E;
+  --today-ring:  #3B82F6;
+  --cal-today:   #172554;
+  --cal-has-task:#1A2437;
+  --avail-busy-bg: #3F1414;
+  --avail-busy-fg: #FCA5A5;
+  --avail-free-bg: #0D2818;
+  --avail-free-fg: #86EFAC;
 
-  --red-bg:   #3A1611;
-  --red-fg:   #F2907F;
-  --amber-bg: #33230A;
-  --amber-fg: #E6B65C;
-  --green-bg: #16301A;
-  --green-fg: #7BC67F;
+  --red-bg:   #3F1414;
+  --red-fg:   #FCA5A5;
+  --amber-bg: #3A2708;
+  --amber-fg: #FCD34D;
+  --green-bg: #0D2818;
+  --green-fg: #86EFAC;
 
-  --shadow-xs: 0 1px 2px rgba(0,0,0,0.35);
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
-  --shadow:    0 4px 14px rgba(0,0,0,0.45);
-  --shadow-lg: 0 12px 32px rgba(0,0,0,0.55);
+  /* Dark sidebar is slightly deeper than the light one for contrast. */
+  --navy:        #080F1E;
+  --navy-2:      #131C2E;
+  --navy-active: #1D4ED8;
+
+  --shadow-xs: 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.45), 0 1px 2px rgba(0,0,0,0.3);
+  --shadow:    0 4px 12px rgba(0,0,0,0.5);
+  --shadow-lg: 0 12px 28px rgba(0,0,0,0.6);
 }
 
 * { box-sizing: border-box; }
@@ -86,7 +112,9 @@ html { -webkit-text-size-adjust: 100%; }
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
   background: var(--bg);
   color: var(--ink);
   transition: background 0.2s, color 0.2s;
@@ -243,10 +271,11 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: var(--topbar-bg);
+  /* Navy in both themes, per the design brief. */
+  background: var(--navy);
+  color: var(--navy-ink);
   border: none;
-  border-right: 1px solid var(--line);
-  box-shadow: var(--shadow-xs);
+  box-shadow: none;
   padding: 1.25rem 1rem;
   gap: 4px;
   overflow: hidden;
@@ -254,15 +283,68 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   z-index: 100;
 }
 
-/* The brand and footer are fixed; only the nav list scrolls. This keeps
-   Sign out and the theme toggle reachable on short or landscape viewports. */
+/* The brand, profile and footer are fixed; only the nav list scrolls. This
+   keeps the theme toggle and Sign out reachable on short or landscape
+   viewports without the nav being cut off. */
 .sidebar-nav {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  margin: 0 -0.5rem;
+  padding: 0 0.5rem;
 }
 .sidebar-footer { flex: 0 0 auto; }
+
+/* Grouped nav sections. */
+.sidebar-nav-group { display: flex; flex-direction: column; gap: 2px; }
+.sidebar-nav-group + .sidebar-nav-group { margin-top: 1.25rem; }
+.sidebar-nav-heading {
+  padding: 0 0.625rem 0.5rem;
+  color: var(--navy-ink-2);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.sidebar-nav-rule {
+  height: 1px;
+  margin: 0.75rem 0.5rem;
+  background: var(--navy-line);
+}
+
+/* Signed-in user, pinned above the footer controls. */
+.sidebar-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  margin: 0.75rem 0 0.5rem;
+  padding: 10px 0.625rem;
+  border-top: 1px solid var(--navy-line);
+}
+.sidebar-profile-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--navy-active);
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: 700;
+}
+.sidebar-profile-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--navy-ink);
+  font-size: 13.5px;
+  font-weight: 600;
+}
 
 .sidebar-brand {
   display: flex;
@@ -283,6 +365,8 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   white-space: nowrap;
 }
 
+/* Merged with the scrolling-nav block above so the flex/overflow rules
+   aren't overridden by a second .sidebar-nav declaration. */
 .sidebar-nav {
   display: flex;
   flex-direction: column;
@@ -295,18 +379,25 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   width: 100%;
   text-align: left;
   background: transparent;
-  color: var(--ink);
+  color: var(--navy-ink);
   border: 1px solid transparent;
-  padding: 10px 12px;
+  padding: 9px 12px;
   border-radius: 10px;
   font-weight: 500;
   box-shadow: none;
-  min-height: 40px;
+  min-height: 38px;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.sidebar-nav button:hover { background: var(--hover-sec); }
-.sidebar-nav button.active { background: var(--accent-soft); color: var(--accent-dark); border-color: var(--accent-soft); }
-[data-theme="dark"] .sidebar-nav button.active { color: var(--accent); }
-.sidebar-nav-icon { display: inline-flex; flex-shrink: 0; opacity: 0.85; }
+.sidebar-nav button:hover { background: var(--navy-2); color: #FFFFFF; }
+.sidebar-nav button.active {
+  background: var(--navy-active);
+  color: #FFFFFF;
+  border-color: var(--navy-active);
+  font-weight: 600;
+}
+.sidebar-nav button.active .sidebar-nav-icon { opacity: 1; }
+.sidebar-nav-icon { display: inline-flex; flex-shrink: 0; opacity: 0.8; }
 .sidebar-nav-badge {
   margin-left: auto;
   background: var(--accent);
@@ -323,45 +414,47 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
 .sidebar-footer {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--line);
-  margin-top: 0.75rem;
+  gap: 2px;
+  flex: 0 0 auto;
+  padding-top: 0.5rem;
 }
+/* Footer controls sit on the navy rail, so they need navy-friendly surfaces
+   rather than the light-theme card tokens. */
 .sidebar-footer button {
+  display: flex;
+  align-items: center;
   width: 100%;
   justify-content: flex-start;
   gap: 10px;
-  min-height: 40px;
-}
-/* Needs to outrank `.sidebar-footer button` (0,1,1), which otherwise forces
-   justify-content: flex-start and pushes the icon and label to the left. */
-.sidebar-footer .sidebar-theme-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  line-height: 1.35;
-  width: 100%;
-  height: auto;
-  min-height: 40px;
-  padding: 9px 16px;
-  font-size: inherit;
-  font-weight: 500;
-  background: var(--card);
-  color: var(--ink);
-  border: 1px solid var(--line);
+  min-height: 38px;
+  padding: 9px 12px;
+  text-align: left;
+  background: transparent;
+  color: var(--navy-ink);
+  border: 1px solid transparent;
   border-radius: 10px;
-  box-shadow: var(--shadow-xs);
+  box-shadow: none;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.sidebar-theme-btn:hover { background: var(--hover-sec); }
+.sidebar-footer button:hover { background: var(--navy-2); color: #FFFFFF; }
+/* Theme toggle shares the footer button treatment; kept as its own rule so a
+   future re-skin of the toggle does not have to fight specificity. */
+.sidebar-footer .sidebar-theme-btn {
+  background: transparent;
+  color: var(--navy-ink);
+  border-color: transparent;
+  box-shadow: none;
+}
+.sidebar-footer .sidebar-theme-btn:hover { background: var(--navy-2); color: #FFFFFF; }
 
 /* Close button (mobile drawer) and collapse toggle (desktop rail) live in the
    brand row; only one of the two is ever visible at a time, controlled below. */
 .sidebar-close-btn, .sidebar-collapse-btn {
   background: transparent;
-  border: 1px solid var(--line);
-  color: var(--ink);
+  border: 1px solid var(--navy-line);
+  color: var(--navy-ink-2);
   width: 30px;
   height: 30px;
   padding: 0;
@@ -371,8 +464,10 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   justify-content: center;
   flex-shrink: 0;
   margin-left: auto;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.sidebar-close-btn:hover, .sidebar-collapse-btn:hover { background: var(--hover-sec); }
+.sidebar-close-btn:hover, .sidebar-collapse-btn:hover { background: var(--navy-2); color: #FFFFFF; }
 .sidebar-close-btn { display: none; } /* shown on mobile via media query below */
 
 /* Collapsed desktop rail: icons only, labels and extras hidden. The collapse
@@ -437,11 +532,11 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
 .card {
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 18px;
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
+  border-radius: var(--r-lg);
+  padding: 1.25rem 1.375rem;
+  margin-bottom: 0;
   overflow: hidden;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-xs);
 }
 
 /* ── Form ── */
@@ -1269,141 +1364,149 @@ a { transition: color var(--dur) var(--ease); }
 .btn-link:hover { transform: translateY(-1px); box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,0.16); }
 .btn-link:active { transform: translateY(0); box-shadow: var(--shadow-xs); }
 
-/* ══ Sidebar search trigger ═══════════════════════════════════════════ */
-.sidebar-search {
+/* ══ Dashboard header ══════════════════════════════════════════════════ */
+.dash-header {
   display: flex;
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  margin-bottom: 4px;
-  padding: 7px 9px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: var(--input-bg);
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+.dash-header-text { min-width: 0; }
+.dash-greeting {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+.dash-subtitle {
+  margin: 4px 0 0;
   color: var(--ink-soft);
-  font-size: 13px;
-  text-align: left;
-  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+  font-size: 14px;
 }
-.sidebar-search:hover { border-color: var(--accent); color: var(--ink); }
-.sidebar-search-kbd {
-  margin-left: auto;
-  padding: 1px 5px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--card);
-  font-family: inherit;
-  font-size: 10.5px;
-}
-.sidebar.collapsed .sidebar-search { justify-content: center; padding: 7px 0; }
-.sidebar.collapsed .sidebar-search-kbd { display: none; }
+.dash-header .primary { gap: 8px; }
 
-/* ══ Command palette ══════════════════════════════════════════════════ */
-.cmdk-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 1200;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 12vh 16px 16px;
-  background: rgba(20, 17, 14, 0.42);
-  backdrop-filter: blur(3px);
-  animation: cmdk-fade 0.14s var(--ease);
+/* ══ Stat cards ════════════════════════════════════════════════════════ */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 1.5rem;
 }
-[data-theme="dark"] .cmdk-backdrop { background: rgba(0, 0, 0, 0.6); }
-
-.cmdk-panel {
-  width: 100%;
-  max-width: 560px;
-  max-height: 70vh;
+.stat-card {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  gap: 2px;
+  padding: 18px 20px;
   background: var(--card);
-  box-shadow: var(--shadow-lg);
-  animation: cmdk-rise 0.16s var(--ease);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-xs);
 }
-
-.cmdk-input {
-  border: none;
-  border-bottom: 1px solid var(--line);
-  border-radius: 0;
-  padding: 15px 17px;
-  font-size: 15px;
+.stat-label {
+  color: var(--ink-soft);
+  font-size: 13px;
   font-weight: 500;
-  box-shadow: none;
 }
-.cmdk-input:focus { outline: none; border-bottom-color: var(--accent); }
-
-.cmdk-results {
-  flex: 1;
-  overflow-y: auto;
-  padding: 6px;
-  scrollbar-width: thin;
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
 }
+.stat-hint { color: var(--ink-soft); font-size: 12.5px; }
+.stat-card.tone-blue  .stat-value { color: var(--accent); }
+.stat-card.tone-amber .stat-value { color: var(--amber-fg); }
+.stat-card.tone-red   .stat-value { color: var(--red-fg); }
+.stat-card.tone-green .stat-value { color: var(--green-fg); }
 
-.cmdk-item {
+/* ══ Two-column dashboard body ═════════════════════════════════════════ */
+.dash-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 20px;
+  align-items: start;
+}
+.dash-main { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.dash-side { display: flex; flex-direction: column; gap: 20px; position: sticky; top: 24px; }
+
+.card-head {
   display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.card-head strong { font-size: 15px; font-weight: 600; }
+
+/* ══ Upcoming tasks ════════════════════════════════════════════════════ */
+.upcoming-list { display: flex; flex-direction: column; }
+.upcoming-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
-  padding: 9px 11px;
+  padding: 11px 4px;
+  background: transparent;
   border: none;
-  border-radius: 8px;
-  background: none;
-  color: var(--ink);
-  font-size: 14px;
+  border-top: 1px solid var(--line);
   text-align: left;
   cursor: pointer;
+  transition: background var(--dur) var(--ease);
 }
-.cmdk-item.active { background: var(--accent-soft); color: var(--accent); }
-.cmdk-item-label {
-  flex: 1;
-  min-width: 0;
+.upcoming-row:first-child { border-top: none; }
+.upcoming-row:hover { background: var(--hover-sec); }
+.upcoming-name {
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.cmdk-item-hint {
-  flex-shrink: 0;
-  color: var(--ink-soft);
-  font-size: 12px;
+.upcoming-client {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.cmdk-item.active .cmdk-item-hint { color: var(--accent); opacity: 0.8; }
-
-.cmdk-empty { margin: 0; padding: 22px 14px; color: var(--ink-soft); font-size: 13px; text-align: center; }
-
-.cmdk-foot {
+.upcoming-when {
   display: flex;
-  gap: 14px;
-  padding: 9px 14px;
-  border-top: 1px solid var(--line);
-  background: color-mix(in srgb, var(--card) 70%, var(--bg));
+  align-items: center;
+  gap: 8px;
   color: var(--ink-soft);
-  font-size: 11.5px;
-}
-.cmdk-foot kbd {
-  display: inline-block;
-  min-width: 17px;
-  margin-right: 3px;
-  padding: 1px 4px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--input-bg);
-  font-family: inherit;
-  font-size: 10.5px;
-  text-align: center;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
-@keyframes cmdk-fade { from { opacity: 0; } to { opacity: 1; } }
-@keyframes cmdk-rise { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
-
-@media (prefers-reduced-motion: reduce) {
-  .cmdk-backdrop, .cmdk-panel { animation: none; }
+/* ══ Schedule overview panel ═══════════════════════════════════════════ */
+.overview-list { margin: 0; display: flex; flex-direction: column; }
+.overview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
 }
+.overview-row:first-child { border-top: none; padding-top: 0; }
+.overview-row dt { color: var(--ink-soft); font-size: 13.5px; }
+.overview-row dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.overview-next {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: var(--accent-soft);
+  border-radius: var(--r);
+}
+.overview-next strong { font-size: 14px; }
+.overview-next .muted { font-size: 12.5px; }
+
+.quick-actions { display: flex; flex-direction: column; gap: 8px; }
 
 /* ══ Focus visibility ═════════════════════════════════════════════════ */
 :where(button, a, input, select, textarea, [tabindex]):focus-visible {
@@ -1552,6 +1655,24 @@ a { transition: color var(--dur) var(--ease); }
 .board-empty { padding: 30px 22px; text-align: center; }
 
 @media (max-width: 1100px) { .board { grid-template-columns: repeat(2, minmax(220px, 1fr)); } }
+
+/* Dashboard: drop the side panel below the main column, then stack the stat
+   cards. The grid is 4-up on desktop, 2-up on tablet, 1-up on phones. */
+@media (max-width: 1080px) {
+  .dash-columns { grid-template-columns: minmax(0, 1fr); }
+  .dash-side { position: static; }
+  .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .dash-header { align-items: stretch; }
+  .dash-header .primary { width: 100%; justify-content: center; }
+  .dash-greeting { font-size: 20px; }
+  .upcoming-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; }
+  .upcoming-client { grid-column: 1 / -1; }
+}
+@media (max-width: 460px) {
+  .stat-grid { grid-template-columns: minmax(0, 1fr); }
+}
 @media (max-width: 720px) {
   .board {
     grid-template-columns: none;

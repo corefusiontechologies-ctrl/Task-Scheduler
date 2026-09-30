@@ -98,10 +98,10 @@ export default function DashboardPage() {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const [dark, toggleDark] = useDarkMode();
   const [copied, setCopied] = useState(null);
-  const [paletteOpen, setPaletteOpen] = useState(false);
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+    const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [userId, setUserId] = useState('');
   const [perms, setPerms] = useState({});
+  const [displayName, setDisplayName] = useState('there');
   const [trashTasks, setTrashTasks] = useState([]);
   const [trashInvoices, setTrashInvoices] = useState([]);
   const [loadingTrash, setLoadingTrash] = useState(false);
@@ -119,6 +119,7 @@ export default function DashboardPage() {
         setUserId(String(user.id || ''));
         setIsSuperAdmin(user.role === 'superadmin');
         setPerms(permissionFlags(user));
+        setDisplayName(user.display_name || user.full_name || user.username || 'there');
       })
       .catch(error => setLoadError(error.message));
     loadAll();
@@ -571,99 +572,70 @@ export default function DashboardPage() {
     }
   }
 
-  const navItems = [
-    { key: 'list', label: 'List', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> },
+  // Primary navigation. "Tasks" is the default list view; the board and
+  // calendar are sibling views of the same data rather than separate pages.
+  const primaryNav = [
+    { key: 'list', label: 'Tasks', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> },
     { key: 'board', label: 'Board', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="18" rx="1.5"/><rect x="14" y="3" width="7" height="11" rx="1.5"/></svg> },
-    { key: 'activity', label: 'Activity', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
+    { key: 'activity', label: 'History', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
     { key: 'calendar', label: 'Calendar', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> },
   ];
+
+  // Secondary items render under their own "Workspace" heading.
+  const workspaceNav = [];
   if (isSuperAdmin || perms?.perm_view_client_links) {
-    navItems.push({ key: 'clients', label: 'Clients', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> });
+    workspaceNav.push({ key: 'clients', label: 'Clients', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> });
   }
   if (isSuperAdmin || perms.perm_view_invoices || perms.perm_manage_invoices) {
-    navItems.push({ key: 'invoices', label: 'Invoices', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg> });
+    workspaceNav.push({ key: 'invoices', label: 'Invoices', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg> });
   }
   if (isSuperAdmin || perms.perm_delete_tasks || perms.perm_manage_invoices) {
-    navItems.push({ key: 'trash', label: 'Trash', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg> });
+    workspaceNav.push({ key: 'trash', label: 'Trash', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg> });
   }
 
-  // ── Command palette ────────────────────────────────────────────────
+  const navGroups = [
+    { label: '', items: primaryNav },
+    { label: 'Workspace', items: workspaceNav },
+  ].filter(group => group.items.length > 0);
+  // Flat list for callers that only need the keys (keyboard shortcuts).
+  const navItems = navGroups.flatMap(group => group.items);
+
+  // ── Navigation ──────────────────────────────────────────────────────
+  // Single entry point for switching views. Sidebar items and the in-page
+  // shortcuts both route through here so lazy views stay consistent.
   const goToTab = key => {
     setTab(key);
     if (key === 'trash') loadTrash();
     if (key === 'activity') loadActivity();
   };
 
-  const commands = useMemo(() => {
-    const list = [];
-    if (isSuperAdmin || perms.perm_add_tasks) {
-      list.push({ id: 'act:new', group: 'Actions', label: 'New task', run: () => openNewForm() });
-    }
-    list.push(
-      { id: 'act:theme', group: 'Actions', label: dark ? 'Switch to light mode' : 'Switch to dark mode', run: () => toggleDark() },
-      { id: 'act:reload', group: 'Actions', label: 'Refresh data', run: () => loadAll() },
-    );
-    for (const item of navItems) {
-      list.push({ id: `go:${item.key}`, group: 'Go to', label: item.label, run: () => goToTab(item.key) });
-    }
-    if (isSuperAdmin) {
-      list.push({ id: 'go:admin', group: 'Go to', label: 'Admin', run: () => router.push('/admin') });
-    }
-    for (const task of tasks) {
-      list.push({
-        id: `task:${task.id}`,
-        group: 'Tasks',
-        label: task.title,
-        hint: [task.client_name, STATUS_LABELS[task.status]].filter(Boolean).join(' · '),
-        run: () => { setTab('list'); openEditForm(task); },
-      });
-    }
-    const seen = new Set();
-    for (const task of tasks) {
-      if (!task.client_name) continue;
-      const key = task.client_name.trim().toLowerCase();
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      const name = task.client_name;
-      list.push({
-        id: `client:${key}`,
-        group: 'Clients',
-        label: name,
-        run: () => { setTab('clients'); },
-      });
-    }
-    return list;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, navItems, dark, isSuperAdmin, perms]);
-
-  // ⌘K / Ctrl+K opens the palette. 'n' starts a new task, but only when
-  // the user is not already typing into a field.
+  // 'n' starts a new task and 1/2/3 switch views, but only when the user
+  // is not already typing into a field.
   useEffect(() => {
     const onKey = e => {
       const mod = e.metaKey || e.ctrlKey;
+      if (mod) return;
       const target = e.target;
       const typing = target instanceof HTMLElement
         && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
-      if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); setPaletteOpen(o => !o); return; }
-      if (typing || paletteOpen) return;
-      if (e.key === '/') { e.preventDefault(); setPaletteOpen(true); return; }
+      if (typing) return;
       if (e.key.toLowerCase() === 'n' && (isSuperAdmin || perms.perm_add_tasks)) { e.preventDefault(); openNewForm(); }
-      // Plain digit keys switch views. Only the always-loaded views are
-      // reachable this way, so the lazy loaders are not needed here.
       const jump = { 1: 'list', 2: 'board', 3: 'calendar' }[e.key];
-      if (jump && !mod) { e.preventDefault(); setTab(jump); }
+      if (jump) { e.preventDefault(); goToTab(jump); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [paletteOpen, isSuperAdmin, perms]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuperAdmin, perms]);
 
   return (
     <div className="app-shell">
       <Sidebar
         items={navItems}
+        groups={navGroups}
         activeKey={tab}
         onSelect={goToTab}
-        onSearch={() => setPaletteOpen(true)}
+        displayName={displayName}
         dark={dark}
         onToggleDark={toggleDark}
         onSignOut={handleLogout}
@@ -677,6 +649,12 @@ export default function DashboardPage() {
           <DashboardSkeleton />
         ) : (
           <>
+            <DashboardHeader
+              displayName={displayName}
+              canAdd={isSuperAdmin || !!perms.perm_add_tasks}
+              onAdd={openNewForm}
+              tab={tab}
+            />
             {tab==='list' && (
               <ListView tasks={tasks} invoices={invoices} team={team} categories={categories}
                 onAdd={openNewForm} onEdit={openEditForm} onDelete={deleteTask} onCopy={copyLink} onShareChange={changeShareLink} copied={copied}
@@ -740,14 +718,6 @@ export default function DashboardPage() {
           <InvoiceForm key={editingInvoice?.id || 'new'} invoice={editingInvoice} invoices={invoices}
             clientNames={[...new Set([...tasks.map(t=>t.client_name), ...invoices.map(i=>i.client_name)].filter(Boolean))].sort()}
             onSave={saveInvoice} onCancel={()=>{setShowInvoiceForm(false);setEditingInvoice(null);}} />
-        )}
-
-        {paletteOpen && (
-          <CommandPalette
-            onClose={() => setPaletteOpen(false)}
-            onNavigate={item => item.run()}
-            commands={commands}
-          />
         )}
       </div>
       </div>
@@ -814,6 +784,11 @@ const DUE_FILTERS = {
 };
 
 function ListView({ tasks, invoices, team, categories, onAdd, onEdit, onDelete, onCopy, onShareChange, copied, isSuperAdmin, userId, perms, onBulkStatusChange, onBulkTrash }) {
+  // Resets the filters and returns to the list view. Passed to the side
+  // panel's "Review all tasks" action.
+  const onShowAll = () => {
+    setFilterStatus('all'); setFilterAssignee('all'); setFilterCategory('all'); setFilterDue('all');
+  };
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterAssignee, setFilterAssignee] = useState('all');
@@ -865,23 +840,30 @@ function ListView({ tasks, invoices, team, categories, onAdd, onEdit, onDelete, 
   const overdueCount = active.filter(t => { const d = daysUntil(t.due_date); return d !== null && d < 0; }).length;
   const unpaidInvoices = (invoices||[]).filter(i => (i.payment_status||'unpaid') === 'unpaid').length;
 
+  // Upcoming = not done, with a due date, soonest first. Drives both the
+  // summary card and the "next task" callout in the side panel.
+  const upcoming = active
+    .filter(t => daysUntil(t.due_date) !== null)
+    .slice()
+    .sort((a,b) => (daysUntil(a.due_date) ?? 1e9) - (daysUntil(b.due_date) ?? 1e9));
+
   return (
-    <div className="card">
-      {/* Summary stats strip */}
-      <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:16}}>
-        {[
-          ['Active tasks', active.length, 'var(--in_progress)'],
-          ['Due this week', dueThisWeek, 'var(--review)'],
-          ['Overdue', overdueCount, 'var(--red-fg)'],
-          ['Unpaid invoices', unpaidInvoices, 'var(--amber-fg)'],
-        ].map(([label,val,color]) => (
-          <div key={label} style={{flex:'1 1 120px',background:'var(--accent-soft)',borderRadius:10,padding:'10px 14px'}}>
-            <div style={{fontSize:20,fontWeight:800,color}}>{val}</div>
-            <div className="muted" style={{fontSize:12}}>{label}</div>
-          </div>
-        ))}
+    <>
+      <div className="stat-grid">
+        <StatCard label="Total Tasks" value={tasks.length} hint={`${active.length} in progress`} tone="blue" />
+        <StatCard label="Active" value={active.length} hint={`${done.length} completed`} tone="blue" />
+        <StatCard label="Due this week" value={dueThisWeek} hint="Next 7 days" tone="amber" />
+        <StatCard
+          label="Overdue"
+          value={overdueCount}
+          hint={overdueCount > 0 ? 'Needs attention' : 'All on track'}
+          tone={overdueCount > 0 ? 'red' : 'green'}
+        />
       </div>
 
+      <div className="dash-columns">
+      <div className="dash-main">
+      <div className="card">
       <div className="nav-row">
         <div>
           <strong>All tasks</strong>
@@ -1037,115 +1019,136 @@ function ListView({ tasks, invoices, team, categories, onAdd, onEdit, onDelete, 
         );
       })}
     </div>
+
+      {/* Upcoming tasks. Summary only — the full list, filters and bulk
+          actions stay above, so this never duplicates controls. */}
+      <div className="card">
+        <div className="card-head">
+          <strong>Upcoming Tasks</strong>
+          <span className="muted" style={{fontSize:13}}>
+            {upcoming.length ? `Next ${Math.min(5, upcoming.length)} by due date` : 'Nothing scheduled'}
+          </span>
+        </div>
+        {upcoming.length === 0 ? (
+          <p className="muted" style={{margin:0, fontSize:14}}>
+            No tasks with a due date. Add one to see it here.
+          </p>
+        ) : (
+          <div className="upcoming-list">
+            {upcoming.slice(0, 5).map(t => (
+              <button key={t.id} className="upcoming-row" onClick={() => onEdit(t)}>
+                <span className="upcoming-name">{t.task_title}</span>
+                <span className="muted upcoming-client">{t.client_name || 'No client'}</span>
+                <span className="upcoming-when">
+                  {fmt(t.due_date)}
+                  <DueBadge dueDate={t.due_date} status={t.status} />
+                </span>
+                <StatusPill status={t.status} />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      </div>
+
+      <aside className="dash-side">
+        <div className="card">
+          <div className="card-head">
+            <strong>Schedule Overview</strong>
+          </div>
+          <dl className="overview-list">
+            <div className="overview-row">
+              <dt>Active tasks</dt>
+              <dd>{active.length}</dd>
+            </div>
+            <div className="overview-row">
+              <dt>Due this week</dt>
+              <dd>{dueThisWeek}</dd>
+            </div>
+            <div className="overview-row">
+              <dt>Overdue</dt>
+              <dd style={overdueCount > 0 ? { color: 'var(--red-fg)' } : undefined}>{overdueCount}</dd>
+            </div>
+            <div className="overview-row">
+              <dt>Unpaid invoices</dt>
+              <dd style={unpaidInvoices > 0 ? { color: 'var(--amber-fg)' } : undefined}>{unpaidInvoices}</dd>
+            </div>
+          </dl>
+
+          {upcoming[0] && (
+            <div className="overview-next">
+              <span className="muted">Next task</span>
+              <strong>{upcoming[0].task_title}</strong>
+              <span className="muted">{fmt(upcoming[0].due_date)}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="card-head"><strong>Quick Actions</strong></div>
+          <div className="quick-actions">
+            {onAdd && (
+              <button className="primary" onClick={onAdd} style={{width:'100%'}}>Create Task</button>
+            )}
+            <button className="secondary" onClick={onShowAll} style={{ width: '100%' }}>
+              Review all tasks
+            </button>
+          </div>
+        </div>
+      </aside>
+      </div>
+    </>
   );
 }
 
-// ── Command palette (⌘K / Ctrl+K) ───────────────────────────────────
-const CommandPalette = ({ onClose, onNavigate, commands }) => {
-  const [query, setQuery] = useState('');
-  const [cursor, setCursor] = useState(0);
-  const inputRef = useRef(null);
-  const listRef = useRef(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return commands.slice(0, 8);
-    const scored = [];
-    for (const item of commands) {
-      const hay = `${item.group} ${item.label} ${item.hint || ''}`.toLowerCase();
-      const at = hay.indexOf(q);
-      if (at === -1) continue;
-      // Prefix and word-start matches rank above mid-string ones.
-      const score = hay.startsWith(q) ? 0 : /\s/.test(hay[at - 1] || ' ') ? 1 : 2;
-      scored.push({ item, score, at });
-    }
-    return scored.sort((a, b) => a.score - b.score || a.item.label.length - b.item.label.length)
-      .slice(0, 30)
-      .map(s => s.item);
-  }, [query, commands]);
-
-  // Clamp at read time so filtering can never leave the cursor out of range.
-  const active = results.length ? Math.min(cursor, results.length - 1) : 0;
-
-  useEffect(() => {
-    const onKey = e => {
-      if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
-      if (e.key === 'ArrowDown') { e.preventDefault(); setCursor(Math.min(active + 1, results.length - 1)); return; }
-      if (e.key === 'ArrowUp') { e.preventDefault(); setCursor(Math.max(active - 1, 0)); return; }
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        const picked = results[active];
-        if (picked) { onClose(); onNavigate(picked); }
-      }
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [results, active, onClose, onNavigate]);
-
-  // Keep the highlighted row inside the scroll viewport.
-  useEffect(() => {
-    listRef.current?.querySelector('.cmdk-item.active')
-      ?.scrollIntoView({ block: 'nearest' });
-  }, [active, results]);
-
+function StatCard({ label, value, hint, tone = 'blue' }) {
   return (
-    <div className="cmdk-backdrop" onMouseDown={onClose}>
-      <div
-        className="cmdk-panel"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Command palette"
-        onMouseDown={e => e.stopPropagation()}
-      >
-        <input
-          ref={inputRef}
-          className="cmdk-input"
-          type="text"
-          value={query}
-          placeholder="Search tasks and clients, or jump to a view…"
-          aria-label="Search commands"
-          autoComplete="off"
-          spellCheck="false"
-          onChange={e => { setQuery(e.target.value); setCursor(0); }}
-        />
-
-        <div className="cmdk-results" ref={listRef} role="listbox" aria-label="Results">
-          {results.length === 0 && (
-            <p className="cmdk-empty">No matches for “{query.trim()}”.</p>
-          )}
-          {results.map((item, i) => (
-            <button
-              key={item.id}
-              type="button"
-              role="option"
-              aria-selected={i === active}
-              className={`cmdk-item${i === active ? ' active' : ''}`}
-              onMouseEnter={() => setCursor(i)}
-              onClick={() => { onClose(); onNavigate(item); }}
-            >
-              <span className="cmdk-item-label">{item.label}</span>
-              {item.hint && <span className="cmdk-item-hint">{item.hint}</span>}
-            </button>
-          ))}
-        </div>
-
-        <footer className="cmdk-foot">
-          <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
-          <span><kbd>↵</kbd> open</span>
-          <span><kbd>esc</kbd> close</span>
-        </footer>
-      </div>
+    <div className={`stat-card tone-${tone}`}>
+      <span className="stat-label">{label}</span>
+      <span className="stat-value">{value}</span>
+      {hint && <span className="stat-hint">{hint}</span>}
     </div>
   );
+}
+
+// ── Dashboard header ─────────────────────────────────────────────────
+// Greeting, subtitle and the primary action. Kept out of the individual
+// views so the header stays put when switching tabs.
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+const TAB_TITLES = {
+  list: 'Manage and schedule your tasks from one place.',
+  board: 'Drag tasks between columns to update their status.',
+  calendar: 'See everything scheduled, by day.',
+  activity: 'A running log of everything that has happened.',
+  clients: 'Share read-only portals with your clients.',
+  invoices: 'Track invoice status and payments.',
+  trash: 'Restore or permanently remove deleted items.',
 };
 
-// ── Board view ──────────────────────────────────────────────────────
-const BOARD_COLUMNS = ['not_started', 'in_progress', 'review', 'done'];
+function DashboardHeader({ displayName, canAdd, onAdd, tab }) {
+  return (
+    <header className="dash-header">
+      <div className="dash-header-text">
+        <h1 className="dash-greeting">{greeting()}, {displayName}</h1>
+        <p className="dash-subtitle">{TAB_TITLES[tab] || TAB_TITLES.list}</p>
+      </div>
+      {canAdd && (
+        <button className="primary" onClick={onAdd}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Create Task
+        </button>
+      )}
+    </header>
+  );
+}
 
+// ── Board view ───────────────────────────────────────────────────────
 function BoardCard({ task, onMove, onEdit, canDrag, dragging, onDragStart, onDragEnd }) {
   const due = daysUntil(task.due_date);
   const overdue = task.status !== 'done' && due !== null && due < 0;
