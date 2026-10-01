@@ -16,27 +16,54 @@ export default function DownloadPdfButton({ filename }) {
       ]);
       const element = document.getElementById('invoice-printable');
       if (!element) throw new Error('Invoice content is unavailable');
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        backgroundColor: '#ffffff',
-        useCORS: true,
-      });
+      // Screen-only chrome must not appear in the PDF.
+      const hidden = element.querySelectorAll('.no-print');
+      const previousDisplay = Array.from(hidden, node => node.style.display);
+      hidden.forEach(node => { node.style.display = 'none'; });
+
+      let canvas;
+      try {
+        canvas = await html2canvas(element, {
+          scale: 2,
+          backgroundColor: '#ffffff',
+          useCORS: true,
+          windowWidth: element.scrollWidth,
+          onclone: doc => {
+            const cloned = doc.getElementById('invoice-printable');
+            if (!cloned) return;
+            cloned.style.boxShadow = 'none';
+            cloned.style.borderRadius = '0';
+            cloned.style.padding = '0';
+            cloned.style.margin = '0';
+            cloned.style.width = '100%';
+            cloned.style.maxWidth = 'none';
+          },
+        });
+      } finally {
+        hidden.forEach((node, i) => { node.style.display = previousDisplay[i]; });
+      }
+
       const image = canvas.toDataURL('image/png');
       const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      const imageWidth = pageWidth;
-      const imageHeight = canvas.height * imageWidth / canvas.width;
-      let heightLeft = imageHeight;
-      let position = 0;
-      pdf.addImage(image, 'PNG', 0, position, imageWidth, imageHeight);
-      heightLeft -= pageHeight;
-      while (heightLeft > 0) {
-        position = heightLeft - imageHeight;
-        pdf.addPage();
-        pdf.addImage(image, 'PNG', 0, position, imageWidth, imageHeight);
-        heightLeft -= pageHeight;
+      const margin = 16;
+      const usableWidth = pageWidth - margin * 2;
+      const usableHeight = pageHeight - margin * 2;
+
+      // Scale to fit the printable area. Cap by height too, so a long invoice
+      // shrinks to one page instead of being sliced across several.
+      const ratio = canvas.height / canvas.width;
+      let drawWidth = usableWidth;
+      let drawHeight = usableWidth * ratio;
+      if (drawHeight > usableHeight) {
+        drawWidth = usableHeight / ratio;
+        drawHeight = usableHeight;
       }
+      const offsetX = (pageWidth - drawWidth) / 2;
+      const offsetY = (pageHeight - drawHeight) / 2;
+      pdf.addImage(image, 'PNG', offsetX, offsetY, drawWidth, drawHeight, undefined, 'FAST');
+
       const safeName = String(filename || 'invoice.pdf').replace(/[^\w.-]+/g, '_');
       pdf.save(safeName);
     } catch {

@@ -62,7 +62,7 @@ export default async function InvoicePage({ params }) {
 
   return (
     <main className="invoice-page" style={{ background: 'var(--bg)', minHeight: '100vh', padding: '2rem 1rem' }}>
-      <div style={{ maxWidth: 700, margin: '0 auto' }}>
+      <div className="invoice-sheet" style={{ maxWidth: 700, margin: '0 auto' }}>
         <div style={{ textAlign: 'right', marginBottom: '1rem', display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }} className="no-print">
           <DownloadPdfButton filename={`${invoice.invoice_number || 'invoice'}.pdf`} />
           <PrintButton />
@@ -71,7 +71,10 @@ export default async function InvoicePage({ params }) {
         <article id="invoice-printable" className="invoice-card" style={{ background: '#fff', borderRadius: 16, boxShadow: '0 2px 24px rgba(0,0,0,0.08)', padding: '2.5rem', color: '#1a1a1a' }}>
           <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
             <div>
-              <BrandLogo alt={COMPANY_NAME} style={{ height: 56, width: 'auto', maxWidth: 220, marginBottom: 8 }} />
+              {/* The invoice is always a light document, so pin the light logo
+                  asset regardless of the viewer's theme — otherwise dark mode
+                  swaps in logo-dark.png and it vanishes on white. */}
+              <BrandLogo alt={COMPANY_NAME} variant="light" priority style={{ height: 56, width: 'auto', maxWidth: 220, marginBottom: 8 }} />
               <p style={{ margin: '4px 0', fontSize: 13, color: '#555' }}>{COMPANY_NAME}</p>
               <p style={{ margin: '4px 0', fontSize: 13, color: '#555' }}>{COMPANY_WEBSITE}</p>
               <p style={{ margin: '4px 0', fontSize: 13, color: '#555' }}>{COMPANY_EMAIL}</p>
@@ -189,10 +192,33 @@ export default async function InvoicePage({ params }) {
       <style>{`
         @media print {
           .no-print { display: none !important; }
-          body { background: white !important; }
-          @page { margin: 0.4in; }
-          .invoice-page { background: white !important; padding: 0 !important; }
-          .invoice-card { box-shadow: none !important; padding: 0 !important; }
+          html, body { background: white !important; margin: 0 !important; padding: 0 !important; }
+          /* A4 with a small margin, and force the browser's own print
+             headers/footers (date, URL) off so they can't add a page. */
+          @page { size: A4 portrait; margin: 8mm; }
+          .invoice-page { background: white !important; padding: 0 !important; min-height: 0 !important; }
+          .invoice-sheet { max-width: none !important; margin: 0 !important; }
+          .invoice-card {
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            padding: 0 !important;
+            max-width: none !important;
+            /* Shrink slightly so the whole document fits one sheet rather
+               than spilling a couple of lines onto page two. */
+            zoom: 0.86;
+          }
+          /* Never split a row, block or heading across pages. */
+          .invoice-card, .invoice-table, .invoice-table tr,
+          .invoice-card table, .invoice-card div, .invoice-card p {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          .invoice-table { min-width: 0 !important; }
+          .invoice-table thead { display: table-header-group; }
+          .invoice-table tfoot { display: table-footer-group; }
+          /* The horizontal scroll wrapper would clip content when printed. */
+          .invoice-table, .invoice-table > * { width: 100% !important; }
+          .no-print * { display: none !important; }
         }
         @media (max-width: 640px) {
           .invoice-page { padding: 1rem 0.5rem !important; }
