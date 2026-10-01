@@ -27,6 +27,7 @@ export default function DownloadPdfButton({ filename }) {
           scale: 2,
           backgroundColor: '#ffffff',
           useCORS: true,
+          imageTimeout: 15000,
           windowWidth: element.scrollWidth,
           onclone: doc => {
             const cloned = doc.getElementById('invoice-printable');
@@ -37,6 +38,19 @@ export default function DownloadPdfButton({ filename }) {
             cloned.style.margin = '0';
             cloned.style.width = '100%';
             cloned.style.maxWidth = 'none';
+            // Freeze every image at its rendered size. html2canvas otherwise
+            // re-resolves <img> dimensions from the intrinsic file size, which
+            // blows a max-width logo up past the card and crops it.
+            cloned.querySelectorAll('img').forEach(img => {
+              const rect = img.getBoundingClientRect();
+              if (rect.width && rect.height) {
+                img.style.width = `${rect.width}px`;
+                img.style.height = `${rect.height}px`;
+                img.style.maxWidth = 'none';
+                img.removeAttribute('srcset');
+                img.removeAttribute('sizes');
+              }
+            });
           },
         });
       } finally {

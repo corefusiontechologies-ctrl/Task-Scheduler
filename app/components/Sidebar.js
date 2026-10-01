@@ -1,6 +1,6 @@
 'use client';
 import { useState, useSyncExternalStore } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import BrandLogo from './BrandLogo';
 
 function SunIcon() {
@@ -69,6 +69,9 @@ export default function Sidebar({ items, groups, activeKey, onSelect, badgeText,
     ? groups
     : [{ label: '', items: items || [] }];
   const router = useRouter();
+  const pathname = usePathname();
+  // Normalise the trailing slash so /admin/ and /admin highlight alike.
+  const currentPath = pathname && pathname !== '/' ? pathname.replace(/\/+$/, '') : pathname;
   const [open, setOpen] = useState(false);
   const collapsed = useSyncExternalStore(subscribeSidebar, getSidebarSnapshot, getSidebarServerSnapshot);
 
@@ -130,20 +133,28 @@ export default function Sidebar({ items, groups, activeKey, onSelect, badgeText,
                 <div className="sidebar-nav-heading">{group.label}</div>
               )}
               {group.label && collapsed && <div className="sidebar-nav-rule" />}
-              {group.items.map(item => (
+              {group.items.map(item => {
+                // An href-based item is active when its route matches, so pages
+                // rendered outside /dashboard (Settings) highlight correctly.
+                const isActive = item.href
+                  ? currentPath === item.href
+                  : activeKey === item.key;
+                return (
                 <button
                   key={item.key}
-                  className={activeKey === item.key ? 'active' : ''}
-                  // Items with an href are real routes (Settings); the rest are
-                  // in-page tabs handled by onSelect.
+                  className={isActive ? 'active' : ''}
+                  // Items with an href are real routes (Settings, Admin); the
+                  // rest are in-page tabs handled by onSelect.
                   onClick={() => (item.href ? router.push(item.href) : selectItem(item.key))}
+                  aria-current={isActive ? 'page' : undefined}
                   title={collapsed ? item.label : undefined}
                 >
                   {item.icon && <span className="sidebar-nav-icon">{item.icon}</span>}
                   <span className="sidebar-nav-label">{item.label}</span>
                   {item.badge ? <span className="sidebar-nav-badge">{item.badge}</span> : null}
                 </button>
-              ))}
+                );
+              })}
             </div>
           ))}
         </nav>
@@ -157,9 +168,13 @@ export default function Sidebar({ items, groups, activeKey, onSelect, badgeText,
           </div>
         )}
 
+        {/* Admin sits at the top of the footer, above the theme toggle and sign
+            out, rather than buried mid-list. It is a different destination to
+            the work views, so grouping it with the account controls reads
+            better than mixing it into the nav groups. */}
         <div className="sidebar-footer">
           {extraLink && (
-            <button className="secondary" onClick={() => { extraLink.onClick(); setOpen(false); }} title={collapsed ? extraLink.label : undefined}>
+            <button className="sidebar-admin-link" onClick={() => { extraLink.onClick(); setOpen(false); }} title={collapsed ? extraLink.label : undefined}>
               <span className="sidebar-nav-icon"><LinkIcon /></span>
               <span className="sidebar-nav-label">{extraLink.label}</span>
             </button>

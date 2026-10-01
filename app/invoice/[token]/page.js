@@ -74,7 +74,12 @@ export default async function InvoicePage({ params }) {
               {/* The invoice is always a light document, so pin the light logo
                   asset regardless of the viewer's theme — otherwise dark mode
                   swaps in logo-dark.png and it vanishes on white. */}
-              <BrandLogo alt={COMPANY_NAME} variant="light" priority style={{ height: 56, width: 'auto', maxWidth: 220, marginBottom: 8 }} />
+              {/* Explicit numeric sizing, no width:auto. html2canvas cannot
+                  resolve `auto` against a next/image <img> and falls back to the
+                  600x600 intrinsic size, which crops the logo into a corner in
+                  the PDF. The source is square, so height maps to width 1:1. */}
+              <BrandLogo alt={COMPANY_NAME} variant="light" priority width={56} height={56}
+                style={{ height: 56, width: 56, objectFit: 'contain', marginBottom: 8 }} />
               <p style={{ margin: '4px 0', fontSize: 13, color: '#555' }}>{COMPANY_NAME}</p>
               <p style={{ margin: '4px 0', fontSize: 13, color: '#555' }}>{COMPANY_WEBSITE}</p>
               <p style={{ margin: '4px 0', fontSize: 13, color: '#555' }}>{COMPANY_EMAIL}</p>
@@ -203,10 +208,15 @@ export default async function InvoicePage({ params }) {
             border-radius: 0 !important;
             padding: 0 !important;
             max-width: none !important;
-            /* Shrink slightly so the whole document fits one sheet rather
-               than spilling a couple of lines onto page two. */
-            zoom: 0.86;
           }
+          /* No forced shrink: a normal invoice fits one sheet on its own, and a
+             long one paginates at readable size with the header row repeated
+             (thead: table-header-group) instead of being scaled into one page. */
+          .invoice-card header { margin-bottom: 1rem !important; }
+          .invoice-card .invoice-bill-grid { margin-bottom: 1rem !important; gap: 1rem !important; }
+          .invoice-card table th,
+          .invoice-card table td { padding: 6px 10px !important; }
+          .invoice-card table td { font-size: 12.5px !important; }
           /* Never split a row, block or heading across pages. */
           .invoice-card, .invoice-table, .invoice-table tr,
           .invoice-card table, .invoice-card div, .invoice-card p {

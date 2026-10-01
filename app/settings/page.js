@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDarkMode } from '../components/useDarkMode';
 import Sidebar from '../components/Sidebar';
-import BrandLogo from '../components/BrandLogo';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/ConfirmDialog';
 
@@ -19,12 +18,26 @@ async function readApiResponse(response) {
   return data;
 }
 
-const NAV = [
-  { key: 'dashboard', label: 'Dashboard', href: '/dashboard' },
-  { key: 'tasks', label: 'Tasks', href: '/dashboard' },
-  { key: 'board', label: 'Board', href: '/dashboard' },
-  { key: 'calendar', label: 'Calendar', href: '/dashboard' },
+// Mirrors the dashboard's own sidebar so navigation doesn't shift between the
+// two pages. These are href routes, so Sidebar derives the active state from
+// the pathname instead of an activeKey.
+const NAV_GROUPS = [
+  { label: '', items: [
+    { key: 'dashboard', label: 'Dashboard', href: '/dashboard' },
+    { key: 'tasks', label: 'Tasks', href: '/dashboard' },
+    { key: 'board', label: 'Board', href: '/dashboard' },
+    { key: 'calendar', label: 'Calendar', href: '/dashboard' },
+  ] },
+  { label: 'Workspace', items: [
+    { key: 'settings', label: 'Settings', href: '/settings', icon: <SettingsIcon /> },
+  ] },
 ];
+
+function SettingsIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6h.09A1.65 1.65 0 0 0 10.6 3.09V3a2 2 0 0 1 4 0v.09A1.65 1.65 0 0 0 16 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 20.4 9v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+  );
+}
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -59,6 +72,16 @@ export default function SettingsPage() {
       })
       .catch(error => setLoadError(error.message));
   }, []);
+
+  async function handleSignOut() {
+    try {
+      await fetch('/api/logout', { method: 'POST' });
+    } catch {
+      // Even if the request fails, send them to the login screen.
+    }
+    router.push('/login');
+    router.refresh();
+  }
 
   async function saveProfile(event) {
     event.preventDefault();
@@ -130,32 +153,14 @@ export default function SettingsPage() {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <div className="sidebar-brand">
-          <BrandLogo className="sidebar-logo" />
-        </div>
-        <nav className="sidebar-nav">
-          {NAV.map(item => (
-            <button key={item.key} className="active" onClick={() => router.push(item.href)}>
-              <span className="sidebar-nav-label">{item.label}</span>
-            </button>
-          ))}
-          <div className="sidebar-nav-group">
-            <div className="sidebar-nav-heading">Workspace</div>
-            <button className="active">
-              <span className="sidebar-nav-label">Settings</span>
-            </button>
-          </div>
-        </nav>
-        <div className="sidebar-footer">
-          <button className="secondary sidebar-theme-btn" onClick={toggleDark}>
-            <span className="sidebar-nav-label">{dark ? 'Light mode' : 'Dark mode'}</span>
-          </button>
-          <button className="secondary" onClick={() => router.push('/')}>
-            <span className="sidebar-nav-label">Sign out</span>
-          </button>
-        </div>
-      </aside>
+      <Sidebar
+        groups={NAV_GROUPS}
+        displayName={user?.name || user?.username || ''}
+        dark={dark}
+        onToggleDark={toggleDark}
+        onSignOut={handleSignOut}
+        extraLink={user?.role === 'superadmin' ? { label: '⭐ Admin', onClick: () => router.push('/admin') } : null}
+      />
 
       <div className="app-main">
         <div className="container app">

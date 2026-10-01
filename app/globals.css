@@ -36,13 +36,18 @@
   --green-bg:  #E8F5E9;
   --green-fg:  #2E7D32;
 
-  /* Sidebar surface. Warm ink in light mode, deep brown in dark mode. */
-  --rail:        #F7F2EA;
-  --rail-2:      #F1ECE3;
-  --rail-line:   #E4DED5;
-  --rail-ink:    #3A342E;
-  --rail-ink-2:  #8A837A;
+  /* Sidebar surface. Warm ink in light mode, deep brown in dark mode.
+     The rail sits noticeably darker than --bg so the sidebar reads as a
+     distinct surface rather than blending into the page behind it. */
+  --rail:        #DFD5C0;
+  --rail-2:      #D3C7AC;
+  --rail-line:   #C4B79A;
+  --rail-ink:    #2E2823;
+  --rail-ink-2:  #6F675C;
   --rail-active: #B84F24;
+  /* Hover ink is its own token: reusing --rail-active's white-on-accent
+     pairing made hover text white on a pale background in light mode. */
+  --rail-hover-ink: #1F1A15;
 
   /* Radii scale (brief asks for 10-14px on cards). */
   --r-sm: 8px;
@@ -93,12 +98,15 @@
   --green-bg: #16301A;
   --green-fg: #7BC67F;
 
-  --rail:        #14120F;
-  --rail-2:      #221F1C;
-  --rail-line:   #2E2A26;
-  --rail-ink:    #E8E3DC;
-  --rail-ink-2:  #918B83;
+  /* In dark mode the rail is a slightly raised panel rather than a darker well,
+     which separates it from the page without an all-black column. */
+  --rail:        #26221D;
+  --rail-2:      #322C26;
+  --rail-line:   #3B342C;
+  --rail-ink:    #EFEAE3;
+  --rail-ink-2:  #9C958C;
   --rail-active: #E8733D;
+  --rail-hover-ink: #F7F3ED;
 
   --shadow-xs: 0 1px 2px rgba(0,0,0,0.4);
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.45), 0 1px 2px rgba(0,0,0,0.3);
@@ -260,6 +268,8 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
 .app-main {
   flex: 1;
   min-width: 0; /* prevents flex children from overflowing horizontally */
+  /* Explicit surface so the rail/bg separation never depends on body colour. */
+  background: var(--bg);
 }
 
 /* ── Sidebar ── */
@@ -274,8 +284,10 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   /* Navy in both themes, per the design brief. */
   background: var(--rail);
   color: var(--rail-ink);
-  border: none;
-  box-shadow: none;
+  /* A hairline plus a soft shadow on the rail's trailing edge. Without one the
+     rail blends into the page on both themes. */
+  border-right: 1px solid var(--rail-line);
+  box-shadow: 1px 0 3px rgba(0,0,0,0.04);
   padding: 1.25rem 1rem;
   gap: 4px;
   overflow: hidden;
@@ -314,13 +326,17 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
 }
 
 /* Signed-in user, pinned above the footer controls. */
+/* Signed-in user, pinned above the footer controls. The row is padded to match
+   the nav buttons' 12px inset, and the name sits on its own line-height grid so
+   it reads as vertically centred against the avatar rather than baseline-dropped. */
 .sidebar-profile {
-  display: flex;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   flex: 0 0 auto;
   margin: 0.75rem 0 0.5rem;
-  padding: 10px 0.625rem;
+  padding: 10px 12px;
   border-top: 1px solid var(--rail-line);
 }
 .sidebar-profile-avatar {
@@ -330,6 +346,7 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   flex-shrink: 0;
   width: 30px;
   height: 30px;
+  line-height: 1;
   border-radius: 50%;
   background: var(--rail-active);
   color: #FFFFFF;
@@ -343,7 +360,10 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   white-space: nowrap;
   color: var(--rail-ink);
   font-size: 13.5px;
+  line-height: 1.3;
   font-weight: 600;
+  /* Neutralises the flex baseline offset some resets reintroduce. */
+  align-self: center;
 }
 
 .sidebar-brand {
@@ -389,7 +409,7 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   cursor: pointer;
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.sidebar-nav button:hover { background: var(--rail-2); color: #FFFFFF; }
+.sidebar-nav button:hover { background: var(--rail-2); color: var(--rail-hover-ink); }
 .sidebar-nav button.active {
   background: var(--rail-active);
   color: #FFFFFF;
@@ -438,7 +458,7 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   cursor: pointer;
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.sidebar-footer button:hover { background: var(--rail-2); color: #FFFFFF; }
+.sidebar-footer button:hover { background: var(--rail-2); color: var(--rail-hover-ink); }
 /* Theme toggle shares the footer button treatment; kept as its own rule so a
    future re-skin of the toggle does not have to fight specificity. */
 .sidebar-footer .sidebar-theme-btn {
@@ -447,10 +467,37 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   border-color: transparent;
   box-shadow: none;
 }
-.sidebar-footer .sidebar-theme-btn:hover { background: var(--rail-2); color: #FFFFFF; }
+.sidebar-footer .sidebar-theme-btn:hover { background: var(--rail-2); color: var(--rail-hover-ink); }
 
 /* Close button (mobile drawer) and collapse toggle (desktop rail) live in the
    brand row; only one of the two is ever visible at a time, controlled below. */
+/* Admin entry: visually separated from the account controls below it so it
+   reads as a distinct destination. */
+.sidebar-footer .sidebar-admin-link {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  justify-content: flex-start;
+  gap: 10px;
+  min-height: 38px;
+  padding: 9px 12px;
+  margin-bottom: 6px;
+  text-align: left;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  box-shadow: none;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.sidebar-footer .sidebar-admin-link:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.sidebar-footer .sidebar-admin-link .sidebar-nav-icon { opacity: 1; }
+
 .sidebar-close-btn, .sidebar-collapse-btn {
   background: transparent;
   border: 1px solid var(--rail-line);
@@ -467,7 +514,7 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   cursor: pointer;
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.sidebar-close-btn:hover, .sidebar-collapse-btn:hover { background: var(--rail-2); color: #FFFFFF; }
+.sidebar-close-btn:hover, .sidebar-collapse-btn:hover { background: var(--rail-2); color: var(--rail-hover-ink); }
 .sidebar-close-btn { display: none; } /* shown on mobile via media query below */
 
 /* Collapsed desktop rail: icons only, labels and extras hidden. The collapse
