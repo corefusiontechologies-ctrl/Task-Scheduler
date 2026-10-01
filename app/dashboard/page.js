@@ -264,12 +264,12 @@ export default function DashboardPage() {
       setTasks(items => items.map(item => item.id === task.id
         ? { ...item, ...(updated || {}), status, progress: status === 'done' ? 100 : item.progress }
         : item));
-      toast.success(`"${task.title}" moved to ${STATUS_LABELS[status]}.`);
+      toast.success(`"${task.task_title}" moved to ${STATUS_LABELS[status]}.`);
     } catch (error) {
       setTasks(items => items.map(item => item.id === task.id
         ? { ...item, status: previous, progress: previousProgress }
         : item));
-      toast.error(`Could not move "${task.title}". ${error.message}`, {
+      toast.error(`Could not move "${task.task_title}". ${error.message}`, {
         detail: 'The task was put back where it was.',
       });
     }
@@ -313,7 +313,7 @@ export default function DashboardPage() {
 
   async function changeShareLink(kind, item, action) {
     const isTask = kind === 'task';
-    const label = isTask ? `"${item.title}"` : `invoice ${item.invoice_number}`;
+    const label = isTask ? `"${item.task_title}"` : `invoice ${item.invoice_number}`;
     const regenerate = action === 'regenerate_share';
     const question = regenerate
       ? `Create a new share link for ${label}?`
@@ -340,7 +340,7 @@ export default function DashboardPage() {
 
   async function changeShareLink(kind, item, action) {
     const isTask = kind === 'task';
-    const label = isTask ? `"${item.title}"` : `invoice ${item.invoice_number}`;
+    const label = isTask ? `"${item.task_title}"` : `invoice ${item.invoice_number}`;
     if (action === 'regenerate_share') {
       const detail = isTask
         ? 'The current link will stop working and a new one will be created. You will need to send the new link to your client.'
@@ -465,14 +465,14 @@ export default function DashboardPage() {
     const task = trashTasks.find(item => item.id === id);
     if (!task) { toast.error('That task is no longer in the trash. Refresh to see the current list.'); return; }
     if (!task.updated_at) { toast.error('This task cannot be restored because its last-updated time is missing. Refresh and try again.'); return; }
-    if (!(await confirm(`Restore "${task.title}"?`, { detail: 'It will move back to your active task list.' }))) return;
+    if (!(await confirm(`Restore "${task.task_title}"?`, { detail: 'It will move back to your active task list.' }))) return;
     try {
       const response = await fetch(`/api/tasks/${id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'restore', expected: task.updated_at }),
       });
       await readApiResponse(response);
-      toast.success(`"${task.title}" restored.`, 'It is back in your active task list.');
+      toast.success(`"${task.task_title}" restored.`, 'It is back in your active task list.');
       await loadTrash();
       await loadAll();
     } catch (error) {
@@ -592,6 +592,15 @@ export default function DashboardPage() {
   if (isSuperAdmin || perms.perm_delete_tasks || perms.perm_manage_invoices) {
     workspaceNav.push({ key: 'trash', label: 'Trash', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg> });
   }
+
+  // Settings is a real route, not a tab, so it is flagged as a link and the
+  // Sidebar renders it with a router navigation instead of setTab.
+  workspaceNav.push({
+    key: 'settings',
+    label: 'Settings',
+    href: '/settings',
+    icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
+  });
 
   const navGroups = [
     { label: '', items: primaryNav },
@@ -1149,6 +1158,9 @@ function DashboardHeader({ displayName, canAdd, onAdd, tab }) {
 }
 
 // ── Board view ───────────────────────────────────────────────────────
+// Column order defines the board layout and the drag targets.
+const BOARD_COLUMNS = ['not_started', 'in_progress', 'review', 'done'];
+
 function BoardCard({ task, onMove, onEdit, canDrag, dragging, onDragStart, onDragEnd }) {
   const due = daysUntil(task.due_date);
   const overdue = task.status !== 'done' && due !== null && due < 0;
@@ -1162,14 +1174,14 @@ function BoardCard({ task, onMove, onEdit, canDrag, dragging, onDragStart, onDra
       onDragEnd={onDragEnd}
       tabIndex={0}
       role="button"
-      aria-label={`${task.title}, ${STATUS_LABELS[task.status]}. Press enter to edit.`}
+      aria-label={`${task.task_title}, ${STATUS_LABELS[task.status]}. Press enter to edit.`}
       onKeyDown={e => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEdit(task); }
       }}
       onClick={() => onEdit(task)}
     >
       <div className="board-card-top">
-        <span className="board-card-title">{task.title}</span>
+        <span className="board-card-title">{task.task_title}</span>
         {task.priority === 'high' && <span className="board-flag" title="High priority">!</span>}
       </div>
 

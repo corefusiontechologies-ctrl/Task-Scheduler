@@ -1,5 +1,6 @@
 'use client';
 import { useState, useSyncExternalStore } from 'react';
+import { useRouter } from 'next/navigation';
 import BrandLogo from './BrandLogo';
 
 function SunIcon() {
@@ -67,6 +68,7 @@ export default function Sidebar({ items, groups, activeKey, onSelect, badgeText,
   const navSections = groups && groups.length
     ? groups
     : [{ label: '', items: items || [] }];
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const collapsed = useSyncExternalStore(subscribeSidebar, getSidebarSnapshot, getSidebarServerSnapshot);
 
@@ -132,7 +134,9 @@ export default function Sidebar({ items, groups, activeKey, onSelect, badgeText,
                 <button
                   key={item.key}
                   className={activeKey === item.key ? 'active' : ''}
-                  onClick={() => selectItem(item.key)}
+                  // Items with an href are real routes (Settings); the rest are
+                  // in-page tabs handled by onSelect.
+                  onClick={() => (item.href ? router.push(item.href) : selectItem(item.key))}
                   title={collapsed ? item.label : undefined}
                 >
                   {item.icon && <span className="sidebar-nav-icon">{item.icon}</span>}

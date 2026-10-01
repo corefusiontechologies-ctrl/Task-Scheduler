@@ -1,50 +1,48 @@
 /* ── Light mode tokens ── */
 :root {
-  /* Blue primary accent. */
-  --accent:      #2563EB;
-  --accent-dark: #1D4ED8;
+  /* Warm terracotta accent. */
+  --accent:      #B84F24;
+  --accent-dark: #963B18;
   --on-accent:   #FFFFFF;
-  --accent-soft: #EFF6FF;
-  --ink:         #0F172A;
-  --ink-soft:    #64748B;
-  --line:        #E2E8F0;
-  --bg:          #F8FAFC;
+  --accent-soft: #F9EDE5;
+  --ink:         #1A1816;
+  --ink-soft:    #6B6760;
+  --line:        #E4DED5;
+  --bg:          #F3EEE6;
   --card:        #FFFFFF;
   --topbar-bg:   #FFFFFF;
   --input-bg:    #FFFFFF;
-  --share-bg:    #F1F5F9;
-  --hover-sec:   #F1F5F9;
+  --share-bg:    #F7F2EA;
+  --hover-sec:   #F1ECE3;
 
   /* Task status colours. */
-  --not_started: #94A3B8;
-  --in_progress: #2563EB;
-  --review:      #D97706;
-  --done:        #16A34A;
-  --today-ring:  #2563EB;
-  --cal-today:   #EFF6FF;
-  --cal-has-task:#F1F5F9;
-  --avail-busy-bg: #FEE2E2;
-  --avail-busy-fg: #B91C1C;
-  --avail-free-bg: #DCFCE7;
-  --avail-free-fg: #15803D;
+  --not_started: #9B9690;
+  --in_progress: #2E7BC4;
+  --review:      #B5790F;
+  --done:        #4F8A22;
+  --today-ring:  #D8602A;
+  --cal-today:   #FEF3ED;
+  --cal-has-task:#F4F0E9;
+  --avail-busy-bg: #F5E3DC;
+  --avail-busy-fg: #A8451C;
+  --avail-free-bg: #E6F2DC;
+  --avail-free-fg: #3B6D11;
 
   /* Semantic alert tones for badges and flags. */
-  --red-bg:    #FEF2F2;
-  --red-fg:    #DC2626;
-  --amber-bg:  #FFFBEB;
-  --amber-fg:  #B45309;
-  --green-bg:  #F0FDF4;
-  --green-fg:  #15803D;
+  --red-bg:    #FDECEA;
+  --red-fg:    #C0392B;
+  --amber-bg:  #FFF4E0;
+  --amber-fg:  #B5790F;
+  --green-bg:  #E8F5E9;
+  --green-fg:  #2E7D32;
 
-  /* Dark navy sidebar. Always navy in both themes, per the design brief,
-     so these live on :root and are deliberately NOT overridden in dark mode. */
-  --navy:        #0F172A;
-  --navy-2:      #1E293B;
-  --navy-3:      #334155;
-  --navy-line:   #1E293B;
-  --navy-ink:    #E2E8F0;
-  --navy-ink-2:  #94A3B8;
-  --navy-active: #1D4ED8;
+  /* Sidebar surface. Warm ink in light mode, deep brown in dark mode. */
+  --rail:        #F7F2EA;
+  --rail-2:      #F1ECE3;
+  --rail-line:   #E4DED5;
+  --rail-ink:    #3A342E;
+  --rail-ink-2:  #8A837A;
+  --rail-active: #B84F24;
 
   /* Radii scale (brief asks for 10-14px on cards). */
   --r-sm: 8px;
@@ -63,42 +61,44 @@
 
 /* ── Dark mode tokens ── */
 [data-theme="dark"] {
-  --accent:      #3B82F6;
-  --accent-dark: #2563EB;
-  --on-accent:   #0B1220;
-  --accent-soft: #172554;
-  --ink:         #E2E8F0;
-  --ink-soft:    #94A3B8;
-  --line:        #273449;
-  --bg:          #0B1220;
-  --card:        #131C2E;
-  --topbar-bg:   #131C2E;
-  --input-bg:    #0F1727;
-  --share-bg:    #16203A;
-  --hover-sec:   #1C2740;
-  --not_started: #64748B;
-  --in_progress: #3B82F6;
-  --review:      #F59E0B;
-  --done:        #22C55E;
-  --today-ring:  #3B82F6;
-  --cal-today:   #172554;
-  --cal-has-task:#1A2437;
-  --avail-busy-bg: #3F1414;
-  --avail-busy-fg: #FCA5A5;
-  --avail-free-bg: #0D2818;
-  --avail-free-fg: #86EFAC;
+  --accent:      #E8733D;
+  --accent-dark: #C85A2B;
+  --on-accent:   #171513;
+  --accent-soft: #3A1F10;
+  --ink:         #F0EDE8;
+  --ink-soft:    #9B9690;
+  --line:        #34312D;
+  --bg:          #171513;
+  --card:        #211E1B;
+  --topbar-bg:   #211E1B;
+  --input-bg:    #1B1917;
+  --share-bg:    #221F1C;
+  --hover-sec:   #2A2622;
+  --not_started: #7A7770;
+  --in_progress: #4A9BE0;
+  --review:      #D4960F;
+  --done:        #6AAE2C;
+  --today-ring:  #E8733D;
+  --cal-today:   #2A1A0E;
+  --cal-has-task:#201E1B;
+  --avail-busy-bg: #2A1208;
+  --avail-busy-fg: #E8733D;
+  --avail-free-bg: #0E2208;
+  --avail-free-fg: #7AC940;
 
-  --red-bg:   #3F1414;
-  --red-fg:   #FCA5A5;
-  --amber-bg: #3A2708;
-  --amber-fg: #FCD34D;
-  --green-bg: #0D2818;
-  --green-fg: #86EFAC;
+  --red-bg:   #3A1611;
+  --red-fg:   #F2907F;
+  --amber-bg: #33230A;
+  --amber-fg: #E6B65C;
+  --green-bg: #16301A;
+  --green-fg: #7BC67F;
 
-  /* Dark sidebar is slightly deeper than the light one for contrast. */
-  --navy:        #080F1E;
-  --navy-2:      #131C2E;
-  --navy-active: #1D4ED8;
+  --rail:        #14120F;
+  --rail-2:      #221F1C;
+  --rail-line:   #2E2A26;
+  --rail-ink:    #E8E3DC;
+  --rail-ink-2:  #918B83;
+  --rail-active: #E8733D;
 
   --shadow-xs: 0 1px 2px rgba(0,0,0,0.4);
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.45), 0 1px 2px rgba(0,0,0,0.3);
@@ -272,8 +272,8 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   display: flex;
   flex-direction: column;
   /* Navy in both themes, per the design brief. */
-  background: var(--navy);
-  color: var(--navy-ink);
+  background: var(--rail);
+  color: var(--rail-ink);
   border: none;
   box-shadow: none;
   padding: 1.25rem 1rem;
@@ -301,7 +301,7 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
 .sidebar-nav-group + .sidebar-nav-group { margin-top: 1.25rem; }
 .sidebar-nav-heading {
   padding: 0 0.625rem 0.5rem;
-  color: var(--navy-ink-2);
+  color: var(--rail-ink-2);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -310,7 +310,7 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
 .sidebar-nav-rule {
   height: 1px;
   margin: 0.75rem 0.5rem;
-  background: var(--navy-line);
+  background: var(--rail-line);
 }
 
 /* Signed-in user, pinned above the footer controls. */
@@ -321,7 +321,7 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   flex: 0 0 auto;
   margin: 0.75rem 0 0.5rem;
   padding: 10px 0.625rem;
-  border-top: 1px solid var(--navy-line);
+  border-top: 1px solid var(--rail-line);
 }
 .sidebar-profile-avatar {
   display: inline-flex;
@@ -331,7 +331,7 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: var(--navy-active);
+  background: var(--rail-active);
   color: #FFFFFF;
   font-size: 13px;
   font-weight: 700;
@@ -341,7 +341,7 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--navy-ink);
+  color: var(--rail-ink);
   font-size: 13.5px;
   font-weight: 600;
 }
@@ -379,7 +379,7 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   width: 100%;
   text-align: left;
   background: transparent;
-  color: var(--navy-ink);
+  color: var(--rail-ink);
   border: 1px solid transparent;
   padding: 9px 12px;
   border-radius: 10px;
@@ -389,11 +389,11 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   cursor: pointer;
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.sidebar-nav button:hover { background: var(--navy-2); color: #FFFFFF; }
+.sidebar-nav button:hover { background: var(--rail-2); color: #FFFFFF; }
 .sidebar-nav button.active {
-  background: var(--navy-active);
+  background: var(--rail-active);
   color: #FFFFFF;
-  border-color: var(--navy-active);
+  border-color: var(--rail-active);
   font-weight: 600;
 }
 .sidebar-nav button.active .sidebar-nav-icon { opacity: 1; }
@@ -430,7 +430,7 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   padding: 9px 12px;
   text-align: left;
   background: transparent;
-  color: var(--navy-ink);
+  color: var(--rail-ink);
   border: 1px solid transparent;
   border-radius: 10px;
   box-shadow: none;
@@ -438,23 +438,23 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   cursor: pointer;
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.sidebar-footer button:hover { background: var(--navy-2); color: #FFFFFF; }
+.sidebar-footer button:hover { background: var(--rail-2); color: #FFFFFF; }
 /* Theme toggle shares the footer button treatment; kept as its own rule so a
    future re-skin of the toggle does not have to fight specificity. */
 .sidebar-footer .sidebar-theme-btn {
   background: transparent;
-  color: var(--navy-ink);
+  color: var(--rail-ink);
   border-color: transparent;
   box-shadow: none;
 }
-.sidebar-footer .sidebar-theme-btn:hover { background: var(--navy-2); color: #FFFFFF; }
+.sidebar-footer .sidebar-theme-btn:hover { background: var(--rail-2); color: #FFFFFF; }
 
 /* Close button (mobile drawer) and collapse toggle (desktop rail) live in the
    brand row; only one of the two is ever visible at a time, controlled below. */
 .sidebar-close-btn, .sidebar-collapse-btn {
   background: transparent;
-  border: 1px solid var(--navy-line);
-  color: var(--navy-ink-2);
+  border: 1px solid var(--rail-line);
+  color: var(--rail-ink-2);
   width: 30px;
   height: 30px;
   padding: 0;
@@ -467,7 +467,7 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   cursor: pointer;
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.sidebar-close-btn:hover, .sidebar-collapse-btn:hover { background: var(--navy-2); color: #FFFFFF; }
+.sidebar-close-btn:hover, .sidebar-collapse-btn:hover { background: var(--rail-2); color: #FFFFFF; }
 .sidebar-close-btn { display: none; } /* shown on mobile via media query below */
 
 /* Collapsed desktop rail: icons only, labels and extras hidden. The collapse
@@ -1507,6 +1507,29 @@ a { transition: color var(--dur) var(--ease); }
 .overview-next .muted { font-size: 12.5px; }
 
 .quick-actions { display: flex; flex-direction: column; gap: 8px; }
+
+/* ══ Settings page ════════════════════════════════════════════════════ */
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  align-items: start;
+  margin-bottom: 20px;
+}
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 0;
+}
+.settings-card .card-head { margin-bottom: 0; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field > span { font-size: 13px; font-weight: 500; color: var(--ink-soft); }
+.field small { font-size: 12px; line-height: 1.4; }
+
+@media (max-width: 900px) {
+  .settings-grid { grid-template-columns: minmax(0, 1fr); }
+}
 
 /* ══ Focus visibility ═════════════════════════════════════════════════ */
 :where(button, a, input, select, textarea, [tabindex]):focus-visible {

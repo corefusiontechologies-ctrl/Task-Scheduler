@@ -248,6 +248,11 @@ const statements = [
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS theme VARCHAR(20) NOT NULL DEFAULT 'auto'`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS name VARCHAR(150)`,
+  // Per-user contact address, used for reminders and share-link notifications.
+  // Optional and unique-when-present so two accounts cannot share one address.
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(254)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique
+     ON users (LOWER(email)) WHERE email IS NOT NULL AND email <> ''`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS role_id INTEGER REFERENCES roles(id) ON DELETE SET NULL`,
   `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS position VARCHAR(150) NOT NULL DEFAULT ''`,
   `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
