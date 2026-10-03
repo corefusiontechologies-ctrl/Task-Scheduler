@@ -2,6 +2,8 @@ import { getSql } from '../../lib/db';
 import { WA_NUMBER, FACEBOOK, INSTAGRAM } from '../../lib/config';
 import { addDays, businessDate, businessMonth, isoDate } from '../../lib/dates';
 import BrandLogo from '../components/BrandLogo';
+import BookingForm from './BookingForm';
+import { BOOKING_HORIZON_DAYS } from '../../lib/bookingRequests';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,6 +53,19 @@ export default async function AvailabilityPage({ searchParams }) {
   const cells = [...Array(firstDay).fill(null), ...Array.from({ length: daysInMonth }, (_, index) => index + 1)];
   const message = encodeURIComponent('Hi, I would like to discuss a new project with CoreFusion Technologies.');
 
+  // Which date the visitor picked. Kept in the query string so the page stays a
+  // server component and a chosen date survives a reload or a shared link.
+  const rawDate = Array.isArray(query?.date) ? query.date[0] : query?.date;
+  const selected = typeof rawDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : null;
+  // Only book forward, and only inside the horizon the API will accept.
+  const selectable = selected
+    && selected >= today
+    && selected <= addDays(today, BOOKING_HORIZON_DAYS)
+    && Number.isFinite(new Date(`${selected}T00:00:00.000Z`).getTime())
+    && new Date(`${selected}T00:00:00.000Z`).toISOString().slice(0, 10) === selected;
+  const chosenDate = selectable ? selected : null;
+  const chosenBusy = chosenDate ? isBusy(chosenDate) : false;
+
   return (
     <main className="container" style={{ maxWidth: 560 }}>
       <div className="client-hero">
@@ -75,7 +90,7 @@ export default async function AvailabilityPage({ searchParams }) {
           <a href={`/availability?m=${offset + 1}`} className="secondary" aria-label="Next month">Next</a>
         </nav>
 
-        <div className="calendar" style={{ marginTop: '0.75rem', gap: 3 }}>
+        <div className="calendar avail-calendar" style={{ marginTop: '0.75rem', gap: 3 }}>
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
             <div key={day} className="cal-header-cell" aria-label={['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][index]}>{day}</div>
           ))}
@@ -84,10 +99,32 @@ export default async function AvailabilityPage({ searchParams }) {
             const value = isoDate(year, month, day);
             const busy = isBusy(value);
             const isToday = value === today;
+            const isSelected = value === chosenDate;
+            const past = value < today;
+            const classes = `cal-cell ${isToday ? 'is-today' : ''} ${isSelected ? 'is-selected' : ''} ${past ? 'is-past' : ''}`;
+            const pill = <div className={`avail-pill ${busy ? 'avail-busy' : 'avail-free'}`}>{past ? 'Past' : busy ? 'Busy' : 'Open'}</div>;
+
+            // Open, bookable days are links. Past days and days already blocked
+            // by committed work stay inert, so the calendar never offers a
+            // choice the server would reject.
+            if (!past && !busy) {
+              return (
+                <a
+                  key={value}
+                  href={`/availability?m=${offset}&date=${value}`}
+                  className={classes}
+                  aria-label={`${fmtLong(value)}, open. Request this date`}
+                  aria-current={isSelected ? 'date' : undefined}
+                >
+                  <div className="daynum">{day}</div>
+                  {pill}
+                </a>
+              );
+            }
             return (
-              <div key={value} className={`cal-cell ${isToday ? 'is-today' : ''}`} style={{ minHeight: 64 }} aria-current={isToday ? 'date' : undefined}>
+              <div key={value} className={classes} aria-current={isToday ? 'date' : undefined}>
                 <div className="daynum">{day}</div>
-                <div className={`avail-pill ${busy ? 'avail-busy' : 'avail-free'}`}>{busy ? 'Busy' : 'Open'}</div>
+                {pill}
               </div>
             );
           })}
@@ -95,12 +132,24 @@ export default async function AvailabilityPage({ searchParams }) {
 
         <p className="muted" style={{ fontSize: 12, marginTop: '1.5rem', textAlign: 'center' }}>
           Availability reflects committed project dates and does not reveal client details.
+          Select any open day to request it.
         </p>
 
+        {chosenDate ? (
+          <BookingForm
+            date={chosenDate}
+            dateLabel={fmtLong(chosenDate)}
+            busy={chosenBusy}
+            clearHref={`/availability?m=${offset}`}
+          />
+        ) : null}
+
         <div style={{ textAlign: 'center', marginTop: 16 }}>
-          <a href={`https://wa.me/${WA_NUMBER}?text=${message}`} target="_blank" rel="noopener noreferrer" className="wa-btn">
-            Book a slot on WhatsApp
-          </a>
+          {chosenDate ? null : (
+            <a href={`https://wa.me/${WA_NUMBER}?text=${message}`} target="_blank" rel="noopener noreferrer" className="wa-btn">
+              Prefer WhatsApp? Message us instead
+            </a>
+          )}
         </div>
       </div>
 

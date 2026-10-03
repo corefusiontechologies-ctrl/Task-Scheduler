@@ -62,20 +62,20 @@ export default async function ClientPage({ params }) {
 
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <span className="badge" style={{ background: 'var(--accent-soft)', color: `var(--${task.status})` }}>
+          <span className="badge status" data-status={task.status}>
             <span className="dot" style={{ background: `var(--${task.status})` }} aria-hidden="true" />
             {STATUS_LABELS[task.status]}
           </span>
           {assigneeNames.length > 0 && <span className="muted" style={{ fontSize: 13 }}>Handled by {assigneeNames.join(', ')}</span>}
         </div>
 
-        <div className="progress-track" role="progressbar" aria-label="Project progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress}>
-          <div className="progress-fill" style={{ width: `${progress}%` }} />
-        </div>
-
         <ol className="stage-row" aria-label="Project stages">
           {STAGES.map((stage, index) => (
-            <li key={stage} className={`stage-item ${index <= currentIndex ? 'stage-dot-active' : ''}`}>
+            <li
+              key={stage}
+              className={`stage-item ${index <= currentIndex ? 'stage-line-active' : ''}`}
+              aria-current={index === currentIndex ? 'step' : undefined}
+            >
               <span className={`stage-dot ${index <= currentIndex ? 'stage-dot-active' : ''}`} aria-hidden="true" />
               <span className={`stage-label ${index === currentIndex ? 'stage-label-active' : ''}`}>{STATUS_LABELS[stage]}</span>
             </li>

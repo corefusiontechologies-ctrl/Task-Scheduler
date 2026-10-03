@@ -314,6 +314,74 @@ const statements = [
       AND task_assignees.member_id = ranked.member_id
       AND ranked.position > 1`,
   `CREATE UNIQUE INDEX IF NOT EXISTS task_assignees_one_primary_index ON task_assignees (task_id) WHERE is_primary`,
+
+  // ── Per-user permission overrides ──
+  // Roles stay the baseline; these tables let a superadmin adjust one
+  // individual without inventing a new role. `effect` is 'allow' to add a
+  // permission the role does not grant, or 'deny' to remove one it does.
+  // Deny wins over allow (see lib/permissions.js resolvePermissions).
+  // Both tables are purely additive - no existing row is read or rewritten,
+  // and dropping them would restore role-only behaviour exactly.
+  `CREATE TABLE IF NOT EXISTS user_permission_overrides (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    permission_id INTEGER NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+    effect VARCHAR(10) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    PRIMARY KEY (user_id, permission_id),
+    CONSTRAINT user_permission_override_effect_check CHECK (effect IN ('allow', 'deny'))
+  )`,
+  `CREATE INDEX IF NOT EXISTS user_permission_overrides_permission_index ON user_permission_overrides (permission_id)`,
+
+  // Per-user category scoping. Mirrors role_categories: an empty set for a
+  // user means "inherit the role's categories", so this table only holds rows
+  // where the user is deliberately narrowed or widened.
+  `CREATE TABLE IF NOT EXISTS user_categories (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, category_id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS user_categories_category_index ON user_categories (category_id)`,
+
+  // ── Booking requests ──
+  // The public availability page lets a visitor ask for a specific date
+  // instead of only linking out to WhatsApp. This is an unauthenticated
+  // write path, so the table carries the submitter IP: the API counts recent
+  // rows for the same IP as its rate limit, which keeps the throttle in the
+  // database where it survives a cold start or a second instance.
+  // Additive only - no existing table is read or rewritten here.
+  `CREATE TABLE IF NOT EXISTS booking_requests (
+    id SERIAL PRIMARY KEY,
+    requested_date DATE NOT NULL,
+    name VARCHAR(150) NOT NULL,
+    email VARCHAR(254) NOT NULL DEFAULT '',
+    phone VARCHAR(50) NOT NULL DEFAULT '',
+    company VARCHAR(255) NOT NULL DEFAULT '',
+    service VARCHAR(100) NOT NULL DEFAULT '',
+    message TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '',
+    status VARCHAR(20) NOT NULL DEFAULT 'new',
+    source VARCHAR(30) NOT NULL DEFAULT 'availability',
+    ip VARCHAR(128) NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    handled_at TIMESTAMPTZ,
+    handled_by VARCHAR(150),
+    archived_at TIMESTAMPTZ,
+    CONSTRAINT booking_requests_status_check CHECK (status IN ('new', 'confirmed', 'declined')),
+    CONSTRAINT booking_requests_source_check CHECK (source IN ('availability', 'admin', 'migration'))
+  )`,
+  `CREATE INDEX IF NOT EXISTS booking_requests_listing_index ON booking_requests (archived_at, status, requested_date)`,
+  // Rate-limit support: count one IP's recent submissions.
+  `CREATE INDEX IF NOT EXISTS booking_requests_ip_index ON booking_requests (ip, created_at DESC)`,
+  // One live request per person per date. Only applies when an address was
+  // given; a repeat POST returns the existing id instead of an error, so a
+  // double-clicked button does not look like a failure to the visitor.
+  `CREATE UNIQUE INDEX IF NOT EXISTS booking_requests_open_unique
+     ON booking_requests (requested_date, lower(email))
+     WHERE archived_at IS NULL AND status = 'new' AND email <> ''`,
+
   `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS issue_date DATE`,
   `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_date DATE`,
   `UPDATE invoices SET issue_date = COALESCE(issue_date, invoice_date, due_date, CURRENT_DATE) WHERE issue_date IS NULL`,
@@ -435,7 +503,6 @@ const statements = [
     ('edit_tasks', 'Edit all tasks'),
     ('edit_own_tasks', 'Edit assigned tasks'),
     ('delete_tasks', 'Delete tasks'),
-    ('upload_files', 'Upload task files'),
     ('view_team', 'View team members'),
     ('manage_team', 'Manage team members'),
     ('view_invoices', 'View invoices'),
@@ -449,6 +516,7 @@ const statements = [
     ('view_client_portal', 'View client portal'),
     ('view_client_links', 'Create and view client links'),
     ('manage_availability', 'Manage availability settings'),
+    ('manage_booking_requests', 'Review and decide booking requests'),
     ('manage_roles', 'Manage roles and permissions'),
     ('manage_categories', 'Manage task categories'),
     ('manage_users', 'Manage users'),
@@ -482,8 +550,8 @@ const statements = [
   CROSS JOIN permissions
   WHERE roles.name = 'staff'
     AND permissions.name IN (
-      'view_tasks', 'create_tasks', 'edit_own_tasks', 'upload_files', 'view_team',
-      'view_invoices', 'create_invoices', 'edit_own_invoices', 'record_payments',
+      'view_tasks', 'create_tasks', 'edit_own_tasks', 'view_team',
+      'view_invoices', 'edit_own_invoices',
       'view_dashboard', 'view_activity', 'view_client_portal', 'view_client_links',
       'manage_availability'
     )
@@ -494,6 +562,49 @@ const statements = [
   CROSS JOIN permissions
   WHERE roles.name = 'client' AND permissions.name = 'view_client_portal'
   ON CONFLICT DO NOTHING`,
+
+  // ── Permission audit ──
+  // Least-privilege defaults for the four pre-built roles.
+  //
+  // superadmin - everything (implied by the CROSS JOIN above).
+  // admin      - everything except manage_users: an operations administrator
+  //              runs the business day to day but cannot create or delete
+  //              accounts, which stays with the owner.
+  // staff      - the list above: their own work plus read-only access to
+  //              invoices. Raising an invoice, recording money received and
+  //              answering a new booking request are commercial decisions, so
+  //              they are deliberately NOT granted here. Grant them per person
+  //              in Admin -> Permissions if a team member needs them.
+  // client     - portal access only.
+  //
+  // The insert above only adds rows, so a role that was previously granted a
+  // permission keeps it. These deletes are what actually enforce the audit.
+  `DELETE FROM role_permissions rp
+   USING roles, permissions
+   WHERE rp.role_id = roles.id AND rp.permission_id = permissions.id
+     AND (
+       (roles.name = 'admin' AND permissions.name = 'manage_users')
+       OR (roles.name = 'staff' AND permissions.name IN (
+             'upload_files', 'create_invoices', 'record_payments',
+             'edit_invoices', 'edit_tasks', 'delete_tasks', 'view_all_tasks',
+             'manage_booking_requests', 'manage_roles', 'manage_team',
+             'manage_users', 'manage_categories', 'manage_invoices',
+             'manage_settings'
+           ))
+       OR (roles.name = 'client' AND permissions.name <> 'view_client_portal')
+     )`,
+
+  // `upload_files` was seeded but no upload feature has ever existed, so it
+  // advertised a capability the app does not have. Remove it and any grants.
+  `DELETE FROM user_permission_overrides upo
+   USING permissions
+   WHERE upo.permission_id = permissions.id
+     AND permissions.name = 'upload_files'`,
+  `DELETE FROM role_permissions rp
+   USING permissions
+   WHERE rp.permission_id = permissions.id
+     AND permissions.name = 'upload_files'`,
+  `DELETE FROM permissions WHERE name = 'upload_files'`,
   `INSERT INTO invoice_number_counters (year, last_value)
   SELECT substring(invoice_number FROM 5 FOR 4)::integer,
     GREATEST(1000, COALESCE(MAX((regexp_match(invoice_number, '^INV-[0-9][0-9][0-9][0-9]-([0-9]+)$'))[1]::integer), 1000))

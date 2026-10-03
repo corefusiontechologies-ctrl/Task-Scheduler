@@ -9,7 +9,12 @@ import { checkPublicRateLimit } from './lib/publicRateLimit';
 // surface, since anyone holding a link can load them.
 const RATE_LIMITED_PATHS = new Set(['/availability']);
 
-const PUBLIC_PATHS = new Set(['/', '/login', '/api/login', '/api/logout', '/availability', '/favicon.ico', '/manifest.webmanifest', '/robots.txt', '/sitemap.xml']);
+// `/api/booking-requests` is public only so an unauthenticated visitor can
+// POST a date request from the availability page. The GET and PATCH handlers
+// still call getFreshSession() and require manage_availability, so lifting the
+// cookie gate here exposes nothing to anonymous callers. The write itself is
+// bounded by a honeypot and two rate limits inside the route.
+const PUBLIC_PATHS = new Set(['/', '/login', '/api/login', '/api/logout', '/availability', '/api/booking-requests', '/favicon.ico', '/manifest.webmanifest', '/robots.txt', '/sitemap.xml']);
 const PUBLIC_TOKEN_ROUTES = [/^\/client\/[^/]+\/?$/, /^\/invoice\/[^/]+\/?$/, /^\/client-portal\/[^/]+\/?$/];
 
 function isPublicPath(pathname) {

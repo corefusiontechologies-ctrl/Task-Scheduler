@@ -3,7 +3,7 @@ import { getFreshSession } from '@/lib/auth';
 import { can, canEditAllTasks, canViewAllTasks, getUserMemberId } from '@/lib/access';
 import { db, genToken, getSql } from '@/lib/db';
 import { ApiError, requestJson, withApi } from '@/lib/http';
-import { describeTaskChanges, normalizeTaskInput, TASK_PAYMENT_STATUSES, TASK_STATUSES, taskCapacity, validateTaskReferences } from '@/lib/tasks';
+import { describeTaskChanges, isTaskLocked, normalizeTaskInput, TASK_PAYMENT_STATUSES, TASK_STATUSES, taskCapacity, validateTaskReferences } from '@/lib/tasks';
 import { oneOf, optionalNumber, requiredTimestamp } from '@/lib/validation';
 
 function assigneeAggregates(taskAlias, memberAlias) {
@@ -129,6 +129,9 @@ export const PUT = withApi(async (request, { params }) => {
   const { id } = await params;
   const current = await findTask(id);
   if (!current) throw new ApiError(404, 'Task not found');
+  if (isTaskLocked(current)) {
+    throw new ApiError(409, 'This task is completed and locked. Reopen it before making changes.');
+  }
   if (!(await canEditTask(session, current))) throw new ApiError(403, 'Task editing access is required');
   const body = await requestJson(request);
   const expected = requiredTimestamp(body.expected, 'Expected update time');
@@ -280,6 +283,14 @@ export const PATCH = withApi(async (request, { params }) => {
   if (!current) throw new ApiError(404, 'Task not found');
   if (!(await canEditTask(session, current))) throw new ApiError(403, 'Task editing access is required');
   const status = body.status === undefined ? current.status : oneOf(body.status, 'Status', TASK_STATUSES);
+
+  // On a completed task only two things are allowed: moving the status away
+  // from `done` to reopen it, and settling the payment. Anything else that
+  // would rewrite progress or status on a locked task is refused here.
+  if (isTaskLocked(current) && status === 'done' && body.progress !== undefined) {
+    throw new ApiError(409, 'This task is completed and locked. Reopen it before changing progress.');
+  }
+
   const progress = body.progress === undefined
     ? current.progress
     : optionalNumber(body.progress, 'Progress', { min: 0, max: 100, integer: true });

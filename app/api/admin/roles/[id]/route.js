@@ -2,25 +2,12 @@ import { NextResponse } from 'next/server';
 import { getFreshSession } from '@/lib/auth';
 import { getSql } from '@/lib/db';
 import { ApiError, requestJson, withApi } from '@/lib/http';
+import { addImpliedPermissions, LEGACY_PERMISSIONS } from '@/lib/permissions';
 import { optionalColor, optionalIdList, optionalString, requiredId, requiredString } from '@/lib/validation';
 
-const LEGACY_PERMISSIONS = {
-  perm_add_tasks: 'create_tasks',
-  perm_edit_tasks: 'edit_tasks',
-  perm_delete_tasks: 'delete_tasks',
-  perm_view_all_tasks: 'view_all_tasks',
-  perm_view_client_links: 'view_client_links',
-  perm_manage_availability: 'manage_availability',
-  perm_manage_invoices: 'manage_invoices',
-};
-
-function addImpliedPermissions(permissions) {
-  const result = new Set(permissions);
-  if (['view_all_tasks', 'create_tasks', 'edit_tasks', 'edit_own_tasks', 'delete_tasks'].some(permission => result.has(permission))) result.add('view_tasks');
-  if (['create_invoices', 'edit_invoices', 'edit_own_invoices', 'record_payments', 'manage_invoices'].some(permission => result.has(permission))) result.add('view_invoices');
-  if (result.has('manage_invoices')) ['create_invoices', 'edit_invoices', 'record_payments'].forEach(permission => result.add(permission));
-  if (result.has('manage_team')) result.add('view_team');
-  return [...result];
+function requireSuperadmin(session) {
+  if (!session) throw new ApiError(401, 'Authentication required');
+  if (session.role !== 'superadmin') throw new ApiError(403, 'Superadmin access required');
 }
 
 function permissionsFromInput(body) {
@@ -33,8 +20,7 @@ function permissionsFromInput(body) {
 
 export const PUT = withApi(async (request, { params }) => {
   const session = await getFreshSession();
-  if (!session) throw new ApiError(401, 'Authentication required');
-  if (session.role !== 'superadmin') throw new ApiError(403, 'Superadmin access required');
+  requireSuperadmin(session);
   const { id } = await params;
   const roleId = requiredId(id, 'Role ID');
   const body = await requestJson(request);
@@ -106,8 +92,7 @@ export const PUT = withApi(async (request, { params }) => {
 export const DELETE = withApi(async (request, { params }) => {
   void request;
   const session = await getFreshSession();
-  if (!session) throw new ApiError(401, 'Authentication required');
-  if (session.role !== 'superadmin') throw new ApiError(403, 'Superadmin access required');
+  requireSuperadmin(session);
   const { id } = await params;
   const roleId = requiredId(id, 'Role ID');
   const [role] = await getSql()`

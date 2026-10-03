@@ -2,37 +2,12 @@ import { NextResponse } from 'next/server';
 import { getFreshSession } from '@/lib/auth';
 import { db, getSql } from '@/lib/db';
 import { ApiError, requestJson, withApi } from '@/lib/http';
+import { addImpliedPermissions, legacyFlags, LEGACY_PERMISSIONS } from '@/lib/permissions';
 import { optionalColor, optionalIdList, optionalString, requiredString } from '@/lib/validation';
 
-const LEGACY_PERMISSIONS = {
-  perm_add_tasks: 'create_tasks',
-  perm_edit_tasks: 'edit_tasks',
-  perm_delete_tasks: 'delete_tasks',
-  perm_view_all_tasks: 'view_all_tasks',
-  perm_view_client_links: 'view_client_links',
-  perm_manage_availability: 'manage_availability',
-  perm_manage_invoices: 'manage_invoices',
-};
-
-function addImpliedPermissions(permissions) {
-  const result = new Set(permissions);
-  if (['view_all_tasks', 'create_tasks', 'edit_tasks', 'edit_own_tasks', 'delete_tasks'].some(permission => result.has(permission))) result.add('view_tasks');
-  if (['create_invoices', 'edit_invoices', 'edit_own_invoices', 'record_payments', 'manage_invoices'].some(permission => result.has(permission))) result.add('view_invoices');
-  if (result.has('manage_invoices')) ['create_invoices', 'edit_invoices', 'record_payments'].forEach(permission => result.add(permission));
-  if (result.has('manage_team')) result.add('view_team');
-  return [...result];
-}
-
-function legacyFlags(permissions) {
-  return {
-    perm_add_tasks: permissions.includes('create_tasks'),
-    perm_edit_tasks: permissions.includes('edit_tasks'),
-    perm_delete_tasks: permissions.includes('delete_tasks'),
-    perm_view_all_tasks: permissions.includes('view_all_tasks'),
-    perm_view_client_links: permissions.includes('view_client_links'),
-    perm_manage_availability: permissions.includes('manage_availability'),
-    perm_manage_invoices: permissions.includes('manage_invoices'),
-  };
+function requireSuperadmin(session) {
+  if (!session) throw new ApiError(401, 'Authentication required');
+  if (session.role !== 'superadmin') throw new ApiError(403, 'Superadmin access required');
 }
 
 async function roleInput(body) {
@@ -55,8 +30,7 @@ async function roleInput(body) {
 
 export const GET = withApi(async () => {
   const session = await getFreshSession();
-  if (!session) throw new ApiError(401, 'Authentication required');
-  if (session.role !== 'superadmin') throw new ApiError(403, 'Superadmin access required');
+  requireSuperadmin(session);
   const roles = await getSql()`
     SELECT r.id::text, r.name, r.description, r.color, r.is_system,
       r.perm_add_tasks, r.perm_edit_tasks, r.perm_delete_tasks,
@@ -84,8 +58,7 @@ export const GET = withApi(async () => {
 
 export const POST = withApi(async request => {
   const session = await getFreshSession();
-  if (!session) throw new ApiError(401, 'Authentication required');
-  if (session.role !== 'superadmin') throw new ApiError(403, 'Superadmin access required');
+  requireSuperadmin(session);
   const input = await roleInput(await requestJson(request));
   const permissionRows = await getSql()`SELECT name FROM permissions WHERE name = ANY(${input.permissions})`;
   const categoryRows = input.allowedCategories.length
@@ -93,7 +66,9 @@ export const POST = withApi(async request => {
     : [];
   if (permissionRows.length !== input.permissions.length) throw new ApiError(400, 'One or more permissions are invalid');
   if (categoryRows.length !== input.allowedCategories.length) throw new ApiError(400, 'One or more categories are invalid');
-  const [role] = await db.transaction(txn => [
+  // db.transaction returns one result-set per statement, so this destructures
+  // to the row array; index [0] is the created role.
+  const [createdRows] = await db.transaction(txn => [
     txn`
       WITH created AS (
         INSERT INTO roles (
@@ -119,6 +94,8 @@ export const POST = withApi(async request => {
       SELECT * FROM created
     `,
   ]);
+  const role = createdRows[0];
+  if (!role) throw new ApiError(500, 'The role could not be created');
   return NextResponse.json({
     ...role,
     permissions: input.permissions,

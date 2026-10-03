@@ -31,7 +31,11 @@ export const PUT = withApi(async (request, { params }) => {
     throw new ApiError(400, 'You cannot change your own role');
   }
   const removesLastSuperadmin = current.role === 'superadmin' && (roles[0].name !== 'superadmin' || !active);
-  const [updated] = await db.transaction(txn => [
+  // db.transaction returns one result-set per statement, so this destructures
+  // to the row array. The `if (!updated[0])` guard below is the load-bearing
+  // part: it is what refuses to remove the last active superadmin. Testing
+  // the result-set itself would always pass, since an empty array is truthy.
+  const [updatedRows] = await db.transaction(txn => [
     txn`
       UPDATE users u
       SET name = ${name},
@@ -62,6 +66,7 @@ export const PUT = withApi(async (request, { params }) => {
       RETURNING id::text, username, role, role_id::text, session_version
     `,
   ]);
+  const updated = updatedRows[0];
   if (!updated) throw new ApiError(409, 'The only active superadmin cannot be removed');
   return NextResponse.json({
     ok: true,

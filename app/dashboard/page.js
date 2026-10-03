@@ -66,6 +66,7 @@ const PERMISSION_FLAGS = {
   perm_edit_own_invoices: 'edit_own_invoices',
   perm_view_team: 'view_team',
   perm_manage_availability: 'manage_availability',
+  perm_manage_booking_requests: 'manage_booking_requests',
 };
 
 function permissionFlags(user) {
@@ -86,6 +87,10 @@ export default function DashboardPage() {
   const prompt = usePrompt();
   const copy = useCopy();
   const [tab, setTab] = useState('list');
+
+  const [requests, setRequests] = useState([]);
+  const [loadingRequests, setLoadingRequests] = useState(false);
+  const [requestsError, setRequestsError] = useState('');
   const [tasks, setTasks] = useState([]);
   const [team, setTeam] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -184,13 +189,42 @@ export default function DashboardPage() {
       client_email: form.client_email || '',
       priority: form.priority || 'medium',
     };
-    const response = editing?.id
-      ? await fetch(`/api/tasks/${editing.id}`, {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, expected: editing.updated_at }),
-        })
-      : await fetch('/api/tasks', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-        });
+    // A completed task is locked server side, so a full PUT is refused while it
+    // is still `done`. Two cases have to be handled against the *stored*
+    // status, not the form value: settling payment on a finished task, and
+    // reopening it (which must happen before any other field can change).
+    const storedDone = Boolean(editing?.id) && editing.status === 'done';
+    let expected = editing?.updated_at;
+    let response;
+
+    if (storedDone && form.status === 'done') {
+      // Still completed: only payment may change.
+      response = await fetch(`/api/tasks/${editing.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payment_status: form.payment_status || 'unpaid',
+          amount_paid: Number(form.amount_paid || 0),
+          expected,
+        }),
+      });
+    } else {
+      if (storedDone) {
+        // Reopen first, then the ordinary full edit becomes possible.
+        const reopened = await readApiResponse(await fetch(`/api/tasks/${editing.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: form.status, expected }),
+        }));
+        expected = reopened.updated_at;
+      }
+      response = editing?.id
+        ? await fetch(`/api/tasks/${editing.id}`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...payload, expected }),
+          })
+        : await fetch('/api/tasks', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+          });
+    }
     await readApiResponse(response);
     setShowForm(false);
     setEditing(null);
@@ -552,6 +586,56 @@ export default function DashboardPage() {
     await copy(`${origin}/invoice/${invoice.share_token}`);
   }
 
+  // ── Booking requests ───────────────────────────────────────────────
+  // Requests arrive from the public availability page. Confirming one is a
+  // commercial decision, so the whole tab is behind manage_booking_requests.
+  async function loadRequests() {
+    setLoadingRequests(true);
+    try {
+      const data = await readApiResponse(await fetch('/api/booking-requests'));
+      setRequests(Array.isArray(data?.requests) ? data.requests : []);
+      setRequestsError('');
+    } catch (error) {
+      setRequestsError(error.message);
+    } finally {
+      setLoadingRequests(false);
+    }
+  }
+
+  async function decideRequest(id, status) {
+    const verb = { confirmed: 'Confirm', declined: 'Decline', new: 'Reopen' }[status] || 'Update';
+    const extra = status === 'confirmed'
+      ? { detail: 'The slot is treated as spoken for. Tell the client directly to finalise it.' }
+      : status === 'declined'
+      ? { detail: 'The client is not notified automatically. Follow up with them yourself.' }
+      : { detail: 'This puts the request back in the new queue.' };
+    if (!(await confirm(`${verb} this booking request?`, extra))) return;
+    try {
+      await readApiResponse(await fetch(`/api/booking-requests/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      }));
+      toast.success(`Booking request ${status}.`);
+      await loadRequests();
+    } catch (error) {
+      toast.error(error.message);
+    }
+  }
+
+  async function archiveRequest(id) {
+    if (!(await confirm('Remove this booking request from the list?', { detail: 'The record is kept, just hidden. It can be brought back by clearing the filter in the API.' }))) return;
+    try {
+      await readApiResponse(await fetch(`/api/booking-requests/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'declined', archived: true }),
+      }));
+      toast.success('Booking request removed.');
+      await loadRequests();
+    } catch (error) {
+      toast.error(error.message);
+    }
+  }
+
   // ── Client portal link ────────────────────────────────────────────
   async function copyClientPortalLink(clientName, clientEmail) {
     let token;
@@ -596,6 +680,11 @@ export default function DashboardPage() {
   if (isSuperAdmin || perms.perm_delete_tasks || perms.perm_manage_invoices) {
     workspaceNav.push({ key: 'trash', label: 'Trash', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg> });
   }
+  // Booking requests are a commercial queue, so they sit behind their own
+  // permission rather than manage_availability which staff hold.
+  if (isSuperAdmin || perms.perm_manage_booking_requests) {
+    workspaceNav.push({ key: 'requests', label: 'Requests', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M9 16l2 2 4-4"/></svg> });
+  }
 
   // Settings is a real route, not a tab, so it is flagged as a link and the
   // Sidebar renders it with a router navigation instead of setTab.
@@ -620,6 +709,7 @@ export default function DashboardPage() {
     setTab(key);
     if (key === 'trash') loadTrash();
     if (key === 'activity') loadActivity();
+    if (key === 'requests') loadRequests();
   };
 
   // 'n' starts a new task and 1/2/3 switch views, but only when the user
@@ -682,6 +772,10 @@ export default function DashboardPage() {
             {tab==='activity' && (
               <ActivityView items={activityItems} loading={loadingActivity}
                 onOpenTask={openTaskFromActivity} onOpenInvoice={openInvoiceFromActivity} />
+            )}
+            {tab==='requests' && (
+              <RequestsView requests={requests} loading={loadingRequests} error={requestsError}
+                onDecide={decideRequest} onArchive={archiveRequest} />
             )}
             {tab==='calendar' && (
               <CalendarView tasks={tasks} monthOffset={monthOffset} setMonthOffset={setMonthOffset} onAdd={openNewForm} onEdit={openEditForm} canAdd={isSuperAdmin || perms.perm_add_tasks} />
@@ -1288,6 +1382,113 @@ function BoardView({ tasks, onMove, onEdit, canDrag, onAdd }) {
   );
 }
 
+// ── Booking requests view ────────────────────────────────────────────
+const REQUEST_STATUS_META = {
+  new:      { label: 'New',      cls: 'badge amber' },
+  confirmed:{ label: 'Confirmed',cls: 'badge green' },
+  declined: { label: 'Declined', cls: 'badge red'   },
+};
+
+function fmtDay(value) {
+  if (!value) return '';
+  const d = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function RequestsView({ requests, loading, error, onDecide, onArchive }) {
+  if (error) {
+    return (
+      <div className="card">
+        <p className="alert error-alert" role="alert">{error}</p>
+      </div>
+    );
+  }
+  const open = requests.filter(r => r.status === 'new');
+  const settled = requests.filter(r => r.status !== 'new');
+
+  function card(request) {
+    const meta = REQUEST_STATUS_META[request.status] || REQUEST_STATUS_META.new;
+    return (
+      <div key={request.id} className="card" style={{ padding: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 0 }}>
+            <strong style={{ fontSize: 15 }}>{request.name}</strong>
+            <span className={`${meta.cls} sm`} style={{ marginLeft: 8 }}>{meta.label}</span>
+            <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+              {fmtDay(request.requested_date)}
+              {request.service ? ` · ${request.service}` : ''}
+              {request.company ? ` · ${request.company}` : ''}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {request.status !== 'confirmed' && (
+              <button type="button" onClick={() => onDecide(request.id, 'confirmed')}>Confirm</button>
+            )}
+            {request.status !== 'declined' && (
+              <button type="button" className="secondary" onClick={() => onDecide(request.id, 'declined')}>Decline</button>
+            )}
+            {request.status !== 'new' && (
+              <button type="button" className="secondary" onClick={() => onDecide(request.id, 'new')}>Reopen</button>
+            )}
+            <button type="button" className="secondary" onClick={() => onArchive(request.id)} aria-label={`Remove request from ${request.name}`}>Remove</button>
+          </div>
+        </div>
+
+        <div className="muted" style={{ fontSize: 12, marginTop: 10 }}>
+          {request.email && <div>{request.email}</div>}
+          {request.phone && <div>{request.phone}</div>}
+        </div>
+        {request.message && (
+          <p style={{ margin: '10px 0 0', fontSize: 13, whiteSpace: 'pre-wrap' }}>{request.message}</p>
+        )}
+        {request.handled_by && (
+          <p className="muted" style={{ fontSize: 11, margin: '8px 0 0' }}>
+            {request.status === 'new' ? 'Reopened' : 'Decided'} by {request.handled_by}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      <div className="card">
+        <strong style={{ fontSize: 17 }}>Booking requests</strong>
+        <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+          Date requests sent from the public availability page. Confirming one holds the slot; the client is
+          not emailed automatically, so follow up with them.
+        </p>
+      </div>
+
+      {loading && requests.length === 0 && <RowSkeleton count={3} />}
+
+      {!loading && requests.length === 0 && (
+        <div className="card">
+          <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+            No booking requests yet. They appear here as soon as someone requests a date on the availability page.
+          </p>
+        </div>
+      )}
+
+      {open.length > 0 && (
+        <>
+          <h3 style={{ margin: '4px 0 0', fontSize: 14 }}>
+            Waiting on you <span className="muted">({open.length})</span>
+          </h3>
+          {open.map(card)}
+        </>
+      )}
+
+      {settled.length > 0 && (
+        <>
+          <h3 style={{ margin: '8px 0 0', fontSize: 14 }}>Decided ({settled.length})</h3>
+          {settled.map(card)}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Activity view ───────────────────────────────────────────────────
 function ActivityView({ items, loading, onOpenTask, onOpenInvoice }) {
   return (
@@ -1616,9 +1817,24 @@ function TaskForm({ editing, team, categories, clientNames, onChange, onSave, on
 
   if (!editing) return null;
   function set(field, value) { onChange({...editing, [field]: value}); }
+  // Completed work is locked. Payment and the status that reopens it stay
+  // editable; everything else is disabled here and refused by the API.
+  const locked = Boolean(editing.id) && editing.status === 'done';
   return (
     <Modal title={editing.id ? 'Edit task' : 'New task'} onClose={onCancel}>
       <div className="modal-form">
+        {locked && (
+          <div className="alert" style={{ marginBottom: 14, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <span aria-hidden="true">🔒</span>
+            <span>
+              <strong>This task is completed and locked.</strong>
+              <br />
+              Its plan and details are frozen so the client link and history stay accurate.
+              You can still settle the payment below, or change the status to reopen it for editing.
+            </span>
+          </div>
+        )}
+        <fieldset disabled={locked} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <div className="form-grid" style={{marginTop:16}}>
           <div>
             <label>Client name</label>
@@ -1679,11 +1895,26 @@ function TaskForm({ editing, team, categories, clientNames, onChange, onSave, on
               {categories.map((c)=><option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
+        </div>
+        <label style={{fontSize:13, color:'var(--ink-soft)'}}>Description</label>
+        <textarea rows={4} value={editing.description||''} onChange={(e)=>set('description',e.target.value)}
+          placeholder="What is being delivered" style={{marginTop:4}} />
+        <label style={{fontSize:13, color:'var(--ink-soft)', marginTop:10}}>Notes for the client</label>
+        <textarea rows={2} value={editing.notes||''} onChange={(e)=>set('notes',e.target.value)}
+          placeholder="Optional message shown under &quot;Notes from our team&quot; on the client link" style={{marginTop:4}} />
+        <label className="checkbox-row">
+          <input type="checkbox" checked={!!editing.client_visible} onChange={(e)=>set('client_visible',e.target.checked)} />
+          <span>Visible on the client link</span>
+        </label>
+        </fieldset>
+
+        <div className="form-grid" style={{ marginTop: locked ? 16 : 0 }}>
           <div>
             <label>Status</label>
             <select value={editing.status||'not_started'} onChange={(e)=>set('status',e.target.value)}>
               {Object.entries(STATUS_LABELS).map(([k,v])=><option key={k} value={k}>{v}</option>)}
             </select>
+            {locked && <p className="muted" style={{ fontSize: 11, margin: '4px 0 0' }}>Pick another status to reopen this task.</p>}
           </div>
           <div>
             <label>Payment status</label>
@@ -1698,16 +1929,6 @@ function TaskForm({ editing, team, categories, clientNames, onChange, onSave, on
             </div>
           )}
         </div>
-        <label style={{fontSize:13, color:'var(--ink-soft)'}}>Description</label>
-        <textarea rows={4} value={editing.description||''} onChange={(e)=>set('description',e.target.value)}
-          placeholder="What is being delivered" style={{marginTop:4}} />
-        <label style={{fontSize:13, color:'var(--ink-soft)', marginTop:10}}>Notes for the client</label>
-        <textarea rows={2} value={editing.notes||''} onChange={(e)=>set('notes',e.target.value)}
-          placeholder="Optional message shown under &quot;Notes from our team&quot; on the client link" style={{marginTop:4}} />
-        <label className="checkbox-row">
-          <input type="checkbox" checked={!!editing.client_visible} onChange={(e)=>set('client_visible',e.target.checked)} />
-          <span>Visible on the client link</span>
-        </label>
 
         {editing.id && (
           <div style={{marginTop:16, borderTop:'1px solid var(--line)', paddingTop:12}}>
@@ -1732,7 +1953,9 @@ function TaskForm({ editing, team, categories, clientNames, onChange, onSave, on
 
         {error && <p className="alert error-alert" role="alert">{error}</p>}
         <div style={{display:'flex',gap:8,marginTop:16}}>
-          <button type="button" onClick={submit}>Save task</button>
+          <button type="button" onClick={submit}>
+            {locked ? (editing.status === 'done' ? 'Save payment' : 'Reopen and save') : 'Save task'}
+          </button>
           <button type="button" className="secondary" onClick={onCancel}>Cancel</button>
         </div>
       </div>

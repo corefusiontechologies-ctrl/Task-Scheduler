@@ -13,7 +13,6 @@ const PERM_META = [
   { permission: 'edit_tasks', label: 'Edit all tasks', desc: 'Edit any task' },
   { permission: 'edit_own_tasks', label: 'Edit assigned tasks', desc: 'Edit tasks assigned to the user' },
   { permission: 'delete_tasks', label: 'Delete tasks', desc: 'Archive tasks' },
-  { permission: 'upload_files', label: 'Upload files', desc: 'Upload task files' },
   { permission: 'view_team', label: 'View team', desc: 'View team members' },
   { permission: 'manage_team', label: 'Manage team', desc: 'Create and edit team members' },
   { permission: 'view_invoices', label: 'View invoices', desc: 'View invoices' },
@@ -27,6 +26,7 @@ const PERM_META = [
   { permission: 'view_dashboard', label: 'View dashboard', desc: 'View the operational dashboard' },
   { permission: 'view_activity', label: 'View activity', desc: 'View activity history' },
   { permission: 'manage_availability', label: 'Manage availability', desc: 'Manage availability settings' },
+  { permission: 'manage_booking_requests', label: 'Booking requests', desc: 'Review, confirm, or decline booking requests' },
   { permission: 'manage_categories', label: 'Manage categories', desc: 'Manage task categories' },
   { permission: 'manage_roles', label: 'Manage roles', desc: 'Manage roles and permissions' },
   { permission: 'manage_users', label: 'Manage users', desc: 'Manage user accounts' },
@@ -83,6 +83,12 @@ export default function AdminPage() {
   const [userForm, setUserForm]   = useState({ name:'', username:'', password:'', role_id:'', theme:'auto', active:true });
   const [editUser, setEditUser]   = useState(null);
   const [userError, setUserError] = useState('');
+
+  // Per-user permission override editor.
+  const [permTarget, setPermTarget]     = useState(null);
+  const [permForm, setPermForm]         = useState(null);
+  const [permError, setPermError]       = useState('');
+  const [permSaving, setPermSaving]     = useState(false);
 
   const [roleForm, setRoleForm]   = useState(emptyRole());
   const [editRole, setEditRole]   = useState(null);
@@ -169,6 +175,122 @@ export default function AdminPage() {
       await loadAll();
     } catch (error) {
       setUserError(error.message);
+    }
+  }
+
+  // ── Per-user permission overrides ────────────────────────────────────
+  // Each permission is a three-state control: "From role" (no override, the
+  // role decides), "Always allow" (added regardless of role) and "Never"
+  // (removed regardless of role). This is what makes it possible to say
+  // "this person can edit tasks but never invoices" without inventing a role.
+
+  const OVERRIDE_INHERIT = 'inherit';
+  const OVERRIDE_ALLOW = 'allow';
+  const OVERRIDE_DENY = 'deny';
+
+  function overrideState(form, permission) {
+    if (form.allowedPermissions.includes(permission)) return OVERRIDE_ALLOW;
+    if (form.deniedPermissions.includes(permission)) return OVERRIDE_DENY;
+    return OVERRIDE_INHERIT;
+  }
+
+  function setOverrideState(permission, next) {
+    setPermForm(prev => {
+      if (!prev) return prev;
+      const without = list => list.filter(item => item !== permission);
+      let allowedPermissions = without(prev.allowedPermissions);
+      let deniedPermissions = without(prev.deniedPermissions);
+      if (next === OVERRIDE_ALLOW) allowedPermissions = [...allowedPermissions, permission];
+      if (next === OVERRIDE_DENY) deniedPermissions = [...deniedPermissions, permission];
+      return { ...prev, allowedPermissions, deniedPermissions };
+    });
+  }
+
+  async function openPermissionEditor(user) {
+    setPermError('');
+    setPermTarget(user);
+    setPermForm(null);
+    try {
+      const state = await readApiResponse(await fetch(`/api/admin/users/${user.id}/permissions`));
+      setPermForm({
+        username: state.username,
+        role: state.role,
+        isSuperAdmin: state.isSuperAdmin,
+        rolePermissions: state.rolePermissions || [],
+        allowedPermissions: state.allowedPermissions || [],
+        deniedPermissions: state.deniedPermissions || [],
+        userCategories: state.userCategories || [],
+        // Categories deliberately not touched until the user edits them, so
+        // saving permissions alone leaves the category scope inherited.
+        categoriesDirty: false,
+      });
+    } catch (error) {
+      setPermError(error.message);
+      setPermTarget(null);
+    }
+  }
+
+  function closePermissionEditor() {
+    setPermTarget(null);
+    setPermForm(null);
+    setPermError('');
+  }
+
+  function toggleUserCategory(categoryId) {
+    setPermForm(prev => {
+      if (!prev) return prev;
+      const id = String(categoryId);
+      const has = prev.userCategories.includes(id);
+      return {
+        ...prev,
+        userCategories: has ? prev.userCategories.filter(item => item !== id) : [...prev.userCategories, id],
+        categoriesDirty: true,
+      };
+    });
+  }
+
+  async function savePermissionOverrides() {
+    if (!permTarget || !permForm) return;
+    setPermError('');
+    setPermSaving(true);
+    try {
+      const payload = {
+        allowedPermissions: permForm.allowedPermissions,
+        deniedPermissions: permForm.deniedPermissions,
+      };
+      // Only send categories when they were actually edited, so saving
+      // permissions cannot silently wipe a category scope.
+      if (permForm.categoriesDirty) payload.userCategories = permForm.userCategories;
+      await readApiResponse(await fetch(`/api/admin/users/${permTarget.id}/permissions`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }));
+      toast.success(`Permissions updated for ${permForm.username}.`);
+      closePermissionEditor();
+      await loadAll();
+    } catch (error) {
+      setPermError(error.message);
+    } finally {
+      setPermSaving(false);
+    }
+  }
+
+  async function resetPermissionOverrides() {
+    if (!permTarget) return;
+    const name = permForm?.username || permTarget.username;
+    if (!(await confirm(`Reset all permission overrides for ${name}?`, { detail: 'They will go back to exactly what their role allows. This cannot be undone.', tone: 'danger' }))) return;
+    setPermError('');
+    setPermSaving(true);
+    try {
+      await readApiResponse(await fetch(`/api/admin/users/${permTarget.id}/permissions`, { method: 'DELETE' }));
+      toast.success(`${name} is back to their role's permissions.`);
+      closePermissionEditor();
+      await loadAll();
+    } catch (error) {
+      setPermError(error.message);
+    } finally {
+      setPermSaving(false);
     }
   }
 
@@ -451,6 +573,7 @@ export default function AdminPage() {
                         @{u.username}
                         <span style={{background:isSuperAdmin?'var(--accent)':role?.color||'var(--line)',color:isSuperAdmin?'var(--on-accent)':'var(--ink)',padding:'1px 7px',borderRadius:10,fontSize:11}}>{isSuperAdmin?'Super Admin':role?.name||u.role||'No role'}</span>
                         {!u.active && <span style={{background:'var(--line)',color:'var(--ink-soft)',padding:'1px 7px',borderRadius:10,fontSize:11}}>Inactive</span>}
+                        {u.hasOverrides && <span style={{background:'var(--accent-soft)',color:'var(--rail-admin-ink)',padding:'1px 7px',borderRadius:10,fontSize:11}} title="This person has permission overrides on top of their role">Custom</span>}
                       </div>
                       <div className="muted" style={{fontSize:11,marginTop:2}}>
                         {u.last_login
@@ -461,11 +584,107 @@ export default function AdminPage() {
                   </div>
                   <div style={{display:'flex',gap:8}}>
                     <button className="secondary" onClick={()=>setEditUser({...u,password:''})}>Edit</button>
+                    <button className="secondary" onClick={()=>openPermissionEditor(u)}>Permissions</button>
                     <button className="danger" onClick={()=>deleteUser(u.id)}>Remove</button>
                   </div>
                 </div>
               );
             })}
+
+            {/* ── Per-user permission editor ── */}
+            {permTarget && (
+              <div style={{background:'var(--share-bg)',borderRadius:10,padding:'1rem',marginTop:14,border:'1px solid var(--line)'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,flexWrap:'wrap'}}>
+                  <div>
+                    <strong style={{fontSize:14}}>Custom permissions for @{permTarget.username}</strong>
+                    <p className="muted" style={{fontSize:12,margin:'2px 0 0'}}>
+                      Start from what their role allows, then force anything on or off for this person only.
+                    </p>
+                  </div>
+                  <button className="secondary" onClick={closePermissionEditor}>Close</button>
+                </div>
+
+                {permError && <p style={{color:'#c0392b',background:'#fdecea',padding:'8px 12px',borderRadius:8,fontSize:13,marginTop:8}}>{permError}</p>}
+
+                {!permForm && <p className="muted" style={{fontSize:13,marginTop:10}}>Loading…</p>}
+
+                {permForm && permForm.isSuperAdmin && (
+                  <p style={{background:'var(--amber-bg)',color:'var(--amber-fg)',padding:'8px 12px',borderRadius:8,fontSize:13,marginTop:10}}>
+                    Super admins bypass every permission check, so overrides cannot restrict this account. Change their role to limit what they can do.
+                  </p>
+                )}
+
+                {permForm && !permForm.isSuperAdmin && (
+                  <>
+                    <p className="muted" style={{fontSize:12,margin:'10px 0 6px'}}>
+                      <strong>From role</strong> is the default. <strong>Always allow</strong> grants it even if the role says no; <strong>Never</strong> blocks it even if the role says yes.
+                    </p>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))',gap:8}}>
+                      {PERM_META.map(p=>{
+                        const state = overrideState(permForm, p.permission);
+                        const fromRole = permForm.rolePermissions.includes(p.permission);
+                        const options = [
+                          { key: OVERRIDE_INHERIT, label: 'From role', title: fromRole ? 'Their role allows this' : 'Their role does not allow this' },
+                          { key: OVERRIDE_ALLOW, label: 'Always allow', title: 'Granted regardless of role' },
+                          { key: OVERRIDE_DENY, label: 'Never', title: 'Blocked regardless of role' },
+                        ];
+                        return (
+                          <div key={p.permission} style={{background:'var(--card)',border:'1px solid var(--line)',borderRadius:8,padding:'8px 10px'}}>
+                            <div style={{fontWeight:600,fontSize:13}}>{p.label}</div>
+                            <div style={{fontSize:11,color:'var(--ink-soft)',marginTop:2,minHeight:26}}>{p.desc}</div>
+                            <div style={{display:'flex',gap:4,marginTop:6,flexWrap:'wrap'}} role="group" aria-label={`${p.label} override`}>
+                              {options.map(o=>{
+                                const active = state === o.key;
+                                const colour = o.key === OVERRIDE_DENY ? 'var(--red-fg)' : o.key === OVERRIDE_ALLOW ? 'var(--green-fg)' : 'var(--ink-soft)';
+                                return (
+                                  <button key={o.key} type="button" title={o.title} aria-pressed={active}
+                                    onClick={()=>setOverrideState(p.permission, o.key)}
+                                    style={{padding:'3px 8px',borderRadius:14,cursor:'pointer',fontSize:11,fontWeight:600,
+                                      background:active?colour:'transparent',color:active?'var(--card)':'var(--ink-soft)',
+                                      border:`1px solid ${active?colour:'var(--line)'}`}}>
+                                    {o.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {categories.length > 0 && !permForm.rolePermissions.includes('view_all_tasks') && (
+                      <div style={{marginTop:14}}>
+                        <label style={{fontSize:13,fontWeight:600,color:'var(--ink)'}}>Category access</label>
+                        <p className="muted" style={{fontSize:12,margin:'2px 0 8px'}}>
+                          Leave every category off to inherit the role&apos;s categories. Choosing any of them replaces the role&apos;s list for this person only.
+                        </p>
+                        <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                          {categories.map(c=>{
+                            const active = permForm.userCategories.includes(String(c.id));
+                            return (
+                              <button key={c.id} type="button" aria-pressed={active}
+                                onClick={()=>toggleUserCategory(c.id)}
+                                style={{padding:'5px 12px',borderRadius:20,cursor:'pointer',fontSize:13,fontWeight:500,
+                                  background:active?c.color:'var(--card)',color:active?'var(--on-accent)':'var(--ink)',
+                                  border:`1px solid ${active?c.color:'var(--line)'}`}}>
+                                {c.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{display:'flex',gap:8,marginTop:14,flexWrap:'wrap'}}>
+                      <button onClick={savePermissionOverrides} disabled={permSaving}>
+                        {permSaving ? 'Saving…' : 'Save permissions'}
+                      </button>
+                      <button className="secondary" onClick={resetPermissionOverrides} disabled={permSaving}>Reset to role</button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )}
 

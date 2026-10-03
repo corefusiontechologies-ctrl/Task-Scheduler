@@ -30,7 +30,7 @@ function TaskRow({ task }) {
     <article style={{ padding: '14px 0', borderBottom: '1px solid var(--line)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <strong style={{ fontSize: 15 }}>{task.title}</strong>
-        <span className="badge" style={{ background: 'var(--accent-soft)', color: `var(--${task.status})` }}>
+        <span className="badge status" data-status={task.status}>
           <span className="dot" style={{ background: `var(--${task.status})` }} aria-hidden="true" />
           {STATUS_LABELS[task.status]}
         </span>
@@ -39,10 +39,20 @@ function TaskRow({ task }) {
         <div className="progress-fill" style={{ width: `${progress}%` }} />
       </div>
       <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
-        {fmt(task.start_date)} to {fmt(task.due_date)}
-        {(task.assignee_names || []).filter(Boolean).length > 0
-          ? ` · Handled by ${(task.assignee_names || []).filter(Boolean).join(', ')}`
-          : ''}
+        {[
+          fmt(task.start_date) && fmt(task.due_date)
+            ? `${fmt(task.start_date)} to ${fmt(task.due_date)}`
+            : fmt(task.start_date)
+              ? `Started ${fmt(task.start_date)}`
+              : fmt(task.due_date)
+                ? `Due ${fmt(task.due_date)}`
+                : 'Dates to be confirmed',
+          (task.assignee_names || []).filter(Boolean).length > 0
+            ? ` · Handled by ${(task.assignee_names || []).filter(Boolean).join(', ')}`
+            : '',
+        ]
+          .filter(Boolean)
+          .join('')}
       </p>
       {task.notes && <p style={{ fontSize: 13, margin: '6px 0 0', whiteSpace: 'pre-wrap' }}>{task.notes}</p>}
     </article>
@@ -117,7 +127,7 @@ export default async function ClientPortalPage({ params }) {
       <div className="client-footer" style={{ flexDirection: 'column', gap: 12 }}>
         <BrandLogo className="footer-logo" />
         <p className="muted" style={{ fontSize: 12, margin: 0, textAlign: 'center' }}>
-          This page updates automatically as your projects progress.
+          This is the latest on your projects. Refresh this page to check for changes.
         </p>
         <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
           <a href="/availability" style={{ fontSize: 12, color: 'var(--ink-soft)' }}>View availability</a>
