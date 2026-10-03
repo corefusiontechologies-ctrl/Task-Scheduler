@@ -119,7 +119,11 @@ export default function DashboardPage() {
         setUserId(String(user.id || ''));
         setIsSuperAdmin(user.role === 'superadmin');
         setPerms(permissionFlags(user));
-        setDisplayName(user.display_name || user.full_name || user.username || 'there');
+        // `name` is the field the Settings page saves and the one
+        // getFreshSession returns. display_name/full_name were never
+        // populated, so reading only those left the greeting and the
+        // sidebar showing the raw username.
+        setDisplayName(user.name || user.display_name || user.full_name || user.username || 'there');
       })
       .catch(error => setLoadError(error.message));
     loadAll();

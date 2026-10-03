@@ -45,6 +45,10 @@
   --rail-ink:    #2E2823;
   --rail-ink-2:  #6F675C;
   --rail-active: #B84F24;
+  --rail-active-ink: #FFFFFF;
+  /* Admin-link ink on --accent-soft. Needs a darker step in light mode
+     (6.2:1) and the bright accent in dark mode (5.0:1). */
+  --rail-admin-ink: #963B18;
   /* Hover ink is its own token: reusing --rail-active's white-on-accent
      pairing made hover text white on a pale background in light mode. */
   --rail-hover-ink: #1F1A15;
@@ -106,6 +110,10 @@
   --rail-ink:    #EFEAE3;
   --rail-ink-2:  #9C958C;
   --rail-active: #E8733D;
+  /* Dark ink on the bright orange: white here is only 3.0:1, below the 4.5:1
+     minimum for normal-size text. */
+  --rail-active-ink: #1A0E07;
+  --rail-admin-ink: #E8733D;
   --rail-hover-ink: #F7F3ED;
 
   --shadow-xs: 0 1px 2px rgba(0,0,0,0.4);
@@ -349,7 +357,7 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   line-height: 1;
   border-radius: 50%;
   background: var(--rail-active);
-  color: #FFFFFF;
+  color: var(--rail-active-ink);
   font-size: 13px;
   font-weight: 700;
 }
@@ -412,7 +420,9 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
 .sidebar-nav button:hover { background: var(--rail-2); color: var(--rail-hover-ink); }
 .sidebar-nav button.active {
   background: var(--rail-active);
-  color: #FFFFFF;
+  /* Ink that stays readable on the active fill. The dark-theme accent is a
+     bright orange where white only reaches 3:1, so it needs dark ink instead. */
+  color: var(--rail-active-ink);
   border-color: var(--rail-active);
   font-weight: 600;
 }
@@ -484,7 +494,9 @@ button.danger:active { transform: translateY(1px); box-shadow: none; }
   margin-bottom: 6px;
   text-align: left;
   background: var(--accent-soft);
-  color: var(--accent);
+  /* --accent on --accent-soft only reaches 4.37:1; --rail-admin-ink clears
+     4.5:1 in both themes. */
+  color: var(--rail-admin-ink);
   border: 1px solid transparent;
   border-radius: 10px;
   box-shadow: none;
